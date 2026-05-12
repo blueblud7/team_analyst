@@ -1,0 +1,31 @@
+# Ticker normalization: all variants → canonical code
+# PoC scope: 반도체 섹터 3종목
+tickers:
+  # 삼성전자
+  "005930": {name: "삼성전자", sector: ["반도체", "메모리"], market: "KRX"}
+  "삼성전자": {canonical: "005930"}
+  "삼전": {canonical: "005930"}
+  "SSNLF": {canonical: "005930"}
+
+  # SK하이닉스
+  "000660": {name: "SK하이닉스", sector: ["반도체", "메모리", "HBM"], market: "KRX"}
+  "SK하이닉스": {canonical: "000660"}
+  "하이닉스": {canonical: "000660"}
+  "SKH": {canonical: "000660"}
+
+  # 마이크론
+  "MU": {name: "Micron Technology", sector: ["반도체", "메모리"], market: "NASDAQ"}
+  "마이크론": {canonical: "MU"}
+  "Micron": {canonical: "MU"}
+
+sectors:
+  반도체:
+    - "005930"
+    - "000660"
+    - "MU"
+  메모리:
+    - "005930"
+    - "000660"
+    - "MU"
+  HBM:
+    - "000660"

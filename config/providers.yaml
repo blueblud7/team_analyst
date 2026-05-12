@@ -1,0 +1,48 @@
+providers:
+  openai:
+    enabled: true
+    tiers:
+      low:  {model: "gpt-5-nano",  price_in: 0.05,  price_out: 0.40}
+      mid:  {model: "gpt-5-nano",  price_in: 0.05,  price_out: 0.40}
+      high: {model: "gpt-5-nano",  price_in: 0.05,  price_out: 0.40}
+    notes: "Strict JSON output 강함"
+
+  anthropic:
+    enabled: false
+    tiers:
+      low:  {model: "claude-haiku-4-5-20251001",  price_in: 1.00,  price_out: 5.00}
+      mid:  {model: "claude-sonnet-4-6",           price_in: 3.00,  price_out: 15.00}
+      high: {model: "claude-opus-4-7",             price_in: 5.00,  price_out: 25.00}
+    notes: "한국어 nuance 최강, 가장 비쌈"
+
+  deepseek:
+    enabled: false
+    tiers:
+      low:  {model: "deepseek-chat",     price_in: 0.28, price_out: 0.42}
+      mid:  {model: "deepseek-chat",     price_in: 0.28, price_out: 0.42}
+      high: {model: "deepseek-reasoner", price_in: 0.28, price_out: 0.42}
+    base_url: "https://api.deepseek.com"
+    notes: "압도적 저가, 중국 서버 경유 주의"
+
+  qwen:
+    enabled: false
+    tiers:
+      low:  {model: "qwen-turbo",  price_in: 0.065, price_out: 0.26}
+      mid:  {model: "qwen-plus",   price_in: 0.325, price_out: 1.95}
+      high: {model: "qwen-max",    price_in: 0.78,  price_out: 3.90}
+    base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    notes: "한국어 강함, 다크호스"
+
+  google:
+    enabled: false
+    tiers:
+      low:  {model: "gemini-2.0-flash-lite", price_in: 0.10, price_out: 0.40}
+      mid:  {model: "gemini-2.0-flash",      price_in: 0.50, price_out: 3.00}
+      high: {model: "gemini-2.5-pro",        price_in: 2.00, price_out: 12.00}
+    notes: "멀티모달, PDF 직접 입력 가능"
+
+cost_simulation:
+  daily_tagger_count: 100
+  daily_sentiment_count: 100
+  report_count_per_2weeks: 2
+  poc_duration_days: 14

@@ -1,0 +1,73 @@
+channels:
+  - name: 키움증권_한지영
+    tier: 1
+    weight: 1.0
+    description: 키움증권 공식 애널리스트 채널 (한지영)
+    telegram_id: null
+
+  - name: 미래에셋증권_퀀트
+    tier: 1
+    weight: 1.0
+    description: 미래에셋증권 전략/퀀트 공식 채널
+    telegram_id: "eqmirae"
+
+  - name: 유진투자증권_리포트
+    tier: 1
+    weight: 1.0
+    description: 유진투자증권 공식 리포트 채널
+    telegram_id: null
+
+  - name: 한화투자증권_리포트
+    tier: 1
+    weight: 1.0
+    description: 한화투자증권 공식 리포트 채널
+    telegram_id: null
+
+  - name: 삼성증권_리포트
+    tier: 1
+    weight: 1.0
+    description: 삼성증권 공식 리포트 채널
+    telegram_id: null
+
+  - name: 실명_애널_채널_예시
+    tier: 2
+    weight: 0.7
+    description: 실명 운영, track record 검증된 개인 채널
+    telegram_id: null
+
+  - name: 채권_아침시황
+    tier: 3
+    weight: 0.5
+    description: 채권 시장 아침 시황 클리핑
+    telegram_id: null
+
+  - name: 주식_아침시황
+    tier: 3
+    weight: 0.5
+    description: 주식 시장 아침 시황 클리핑
+    telegram_id: null
+
+  - name: 연준_발언_클리핑
+    tier: 3
+    weight: 0.5
+    description: 연준 위원 발언 뉴스 클리핑
+    telegram_id: null
+
+  - name: 한국경제_텔레그램
+    tier: 3
+    weight: 0.5
+    description: 한국경제 뉴스 클리핑
+    telegram_id: null
+
+  - name: 익명_추천주_채널
+    tier: 4
+    weight: 0.2
+    description: 익명 운영, 추천주 위주 (신뢰도 낮음)
+    telegram_id: null
+    excluded: false
+
+tier_definitions:
+  1: {label: "증권사 공식 리포트", weight: 1.0}
+  2: {label: "검증된 애널리스트", weight: 0.7}
+  3: {label: "뉴스 클리핑", weight: 0.5}
+  4: {label: "정체불명/추천주", weight: 0.2}

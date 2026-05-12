@@ -1,0 +1,13 @@
+.env
+__pycache__/
+*.pyc
+*.pyo
+.DS_Store
+scoring/results/*.json
+scoring/scores.csv
+data/live/
+data/backtest/
+reports/
+*.egg-info/
+.venv/
+venv/
