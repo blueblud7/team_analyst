@@ -7,19 +7,31 @@ import type { ProviderName, TaggedEvent } from '@/lib/models'
 
 export const maxDuration = 300
 
+interface SampleInput {
+  source_channel: string
+  raw_summary: string
+  source_url: string
+}
+
 export async function POST(req: NextRequest) {
   const body = await req.json()
   const providers: ProviderName[] = body.providers ?? []
   const task: 'tagger' | 'sentiment' = body.task ?? 'tagger'
+
+  // Accept custom items (from news/Neon) or fall back to built-in samples
+  const customItems: SampleInput[] | undefined = body.items
   const sampleIndices: number[] = body.samples ?? SAMPLES.map((_, i) => i)
+
+  const samples: SampleInput[] = customItems && customItems.length > 0
+    ? customItems
+    : sampleIndices.filter(i => i >= 0 && i < SAMPLES.length).map(i => SAMPLES[i])
 
   if (!providers.length) {
     return NextResponse.json({ error: 'No providers specified' }, { status: 400 })
   }
-
-  const samples = sampleIndices
-    .filter(i => i >= 0 && i < SAMPLES.length)
-    .map(i => SAMPLES[i])
+  if (!samples.length) {
+    return NextResponse.json({ error: 'No samples to analyze' }, { status: 400 })
+  }
 
   async function runOne(provider: ProviderName, idx: number): Promise<TaggedEvent | null> {
     const s = samples[idx]

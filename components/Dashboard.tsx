@@ -1,9 +1,10 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect } from 'react'
 import type { TaggedEvent, ProviderName, CompareResult, ScoreRow } from '@/lib/models'
 import { PROVIDER_CONFIG } from '@/lib/config'
 import { SAMPLES } from '@/lib/samples'
+import type { NewsItem } from '@/app/api/news/route'
 
 const PROVIDER_NAMES = Object.keys(PROVIDER_CONFIG) as ProviderName[]
 const TAGGER_CRITERIA = [
@@ -43,11 +44,12 @@ function badge(label: string | null) {
 
 // ── Run Panel ──────────────────────────────────────────────────────────────────
 
-function RunPanel() {
+function RunPanel({ newsItems }: { newsItems: NewsItem[] }) {
   const [selectedProviders, setSelectedProviders] = useState<ProviderName[]>(
     PROVIDER_NAMES.filter(p => PROVIDER_CONFIG[p].enabled)
   )
   const [task, setTask] = useState<'tagger' | 'sentiment'>('tagger')
+  const [useNewsItems, setUseNewsItems] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<CompareResult | null>(null)
@@ -66,18 +68,24 @@ function RunPanel() {
     setError(null)
     setResult(null)
     try {
+      const body: Record<string, unknown> = { providers: selectedProviders, task }
+      if (useNewsItems && newsItems.length > 0) {
+        body.items = newsItems.map(n => ({
+          source_channel: n.source_channel,
+          raw_summary: n.raw_summary,
+          source_url: n.source_url,
+        }))
+      }
       const res = await fetch('/api/compare', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ providers: selectedProviders, task }),
+        body: JSON.stringify(body),
       })
       if (!res.ok) throw new Error(await res.text())
       const data = await res.json()
       setResult(data)
       const firstProvider = Object.keys(data.results)[0]
       setActiveProvider(firstProvider ?? null)
-
-      // save to localStorage for scoring tab
       localStorage.setItem('compareResult', JSON.stringify(data))
     } catch (e) {
       setError(String(e))
@@ -143,7 +151,25 @@ function RunPanel() {
         </div>
 
         <div>
-          <p className="text-sm text-gray-500 mb-1">샘플: {SAMPLES.length}개 (data/samples/)</p>
+          <label className="flex items-center gap-2 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={useNewsItems}
+              onChange={e => setUseNewsItems(e.target.checked)}
+              disabled={newsItems.length === 0}
+              className="rounded"
+            />
+            <span className="text-sm text-gray-700">
+              수집된 뉴스 사용
+              {newsItems.length > 0
+                ? <span className="ml-1 text-blue-600 font-medium">({newsItems.length}건)</span>
+                : <span className="ml-1 text-gray-400">(뉴스 수집 탭에서 먼저 가져오세요)</span>
+              }
+            </span>
+          </label>
+          {!useNewsItems && (
+            <p className="text-xs text-gray-400 mt-1 ml-6">내장 샘플 {SAMPLES.length}개 사용 중</p>
+          )}
         </div>
 
         <button
@@ -599,16 +625,169 @@ function MatrixPanel() {
   )
 }
 
+// ── News Panel ────────────────────────────────────────────────────────────────
+
+const SOURCE_TYPES: Record<string, string> = {
+  neon_message: '텔레그램',
+  neon_summary: 'AI요약',
+  dart: 'DART',
+  cnn: 'CNN',
+  sample: '샘플',
+}
+
+function NewsPanel({ onNewsLoaded }: { onNewsLoaded: (items: NewsItem[]) => void }) {
+  const [loading, setLoading] = useState(false)
+  const [items, setItems] = useState<NewsItem[]>([])
+  const [selected, setSelected] = useState<Set<number>>(new Set())
+  const [dbStatus, setDbStatus] = useState<{ channels: number; messages: number; connected: boolean } | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [sources, setSources] = useState({ dart: true, cnn: true, neon: true })
+
+  async function fetchNews() {
+    setLoading(true)
+    setError(null)
+    try {
+      const active = Object.entries(sources).filter(([, v]) => v).map(([k]) => k).join(',')
+      const res = await fetch(`/api/news?sources=${active}`)
+      const data = await res.json()
+      setItems(data.items ?? [])
+      setDbStatus(data.db)
+      setSelected(new Set((data.items ?? []).map((_: unknown, i: number) => i)))
+      if (data.errors?.length) setError(data.errors.join(' | '))
+    } catch (e) {
+      setError(String(e))
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  function toggleItem(i: number) {
+    setSelected(prev => {
+      const next = new Set(prev)
+      next.has(i) ? next.delete(i) : next.add(i)
+      return next
+    })
+  }
+
+  function sendToAnalysis() {
+    const picked = items.filter((_, i) => selected.has(i))
+    onNewsLoaded(picked)
+  }
+
+  return (
+    <div className="space-y-5">
+      {/* DB Status */}
+      <div className="bg-white rounded-xl border p-5">
+        <h2 className="font-semibold text-gray-800 mb-3">데이터 소스</h2>
+        <div className="flex flex-wrap gap-4 text-sm mb-4">
+          <div className={`flex items-center gap-2 px-3 py-2 rounded-lg border ${dbStatus?.connected ? 'border-green-300 bg-green-50' : 'border-gray-200 bg-gray-50'}`}>
+            <span className={`w-2 h-2 rounded-full ${dbStatus?.connected ? 'bg-green-500' : 'bg-gray-300'}`} />
+            <span className="font-medium">Neon DB</span>
+            {dbStatus?.connected && (
+              <span className="text-gray-500">채널 {dbStatus.channels}개 · 메시지 {dbStatus.messages}건</span>
+            )}
+            {!dbStatus?.connected && <span className="text-gray-400">미연결</span>}
+          </div>
+          <div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-blue-200 bg-blue-50">
+            <span className="w-2 h-2 rounded-full bg-blue-500" />
+            <span className="font-medium">DART</span>
+            <span className="text-gray-500">전자공시</span>
+          </div>
+          <div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-orange-200 bg-orange-50">
+            <span className="w-2 h-2 rounded-full bg-orange-500" />
+            <span className="font-medium">CNN RSS</span>
+            <span className="text-gray-500">금융/경제</span>
+          </div>
+        </div>
+
+        <div className="flex gap-3 items-center mb-1">
+          {(Object.keys(sources) as (keyof typeof sources)[]).map(k => (
+            <label key={k} className="flex items-center gap-1.5 text-sm cursor-pointer">
+              <input type="checkbox" checked={sources[k]} onChange={e => setSources(prev => ({ ...prev, [k]: e.target.checked }))} />
+              {k.toUpperCase()}
+            </label>
+          ))}
+        </div>
+
+        <button
+          onClick={fetchNews}
+          disabled={loading}
+          className="mt-3 px-5 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 transition"
+        >
+          {loading ? '수집 중...' : '뉴스 가져오기'}
+        </button>
+        {error && <p className="mt-2 text-xs text-red-500">{error}</p>}
+      </div>
+
+      {/* Items list */}
+      {items.length > 0 && (
+        <div className="bg-white rounded-xl border p-5">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="font-semibold text-gray-800">수집된 항목 ({items.length}건)</h3>
+            <div className="flex gap-2">
+              <button onClick={() => setSelected(new Set(items.map((_, i) => i)))} className="text-xs text-blue-600 hover:underline">전체선택</button>
+              <button onClick={() => setSelected(new Set())} className="text-xs text-gray-500 hover:underline">전체해제</button>
+              <button
+                onClick={sendToAnalysis}
+                disabled={selected.size === 0}
+                className="px-3 py-1 bg-green-600 text-white text-xs rounded-lg hover:bg-green-700 disabled:opacity-50 transition"
+              >
+                선택 {selected.size}건 → 실험 실행에 전달
+              </button>
+            </div>
+          </div>
+          <div className="space-y-2 max-h-[480px] overflow-y-auto pr-1">
+            {items.map((item, i) => (
+              <label key={i} className={`flex gap-3 p-3 rounded-lg border cursor-pointer transition ${selected.has(i) ? 'border-blue-300 bg-blue-50' : 'border-gray-100 hover:border-gray-300'}`}>
+                <input
+                  type="checkbox"
+                  checked={selected.has(i)}
+                  onChange={() => toggleItem(i)}
+                  className="mt-0.5 shrink-0"
+                />
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${
+                      item.source_type === 'dart' ? 'bg-blue-100 text-blue-700' :
+                      item.source_type === 'cnn' ? 'bg-orange-100 text-orange-700' :
+                      item.source_type === 'neon_message' ? 'bg-purple-100 text-purple-700' :
+                      'bg-gray-100 text-gray-600'
+                    }`}>
+                      {SOURCE_TYPES[item.source_type] ?? item.source_type}
+                    </span>
+                    <span className="text-xs text-gray-500 truncate">{item.source_channel}</span>
+                    <span className="text-xs text-gray-400 ml-auto shrink-0">
+                      {new Date(item.posted_at).toLocaleDateString('ko-KR')}
+                    </span>
+                  </div>
+                  <p className="text-sm text-gray-700 line-clamp-2">{item.raw_summary.slice(0, 200)}</p>
+                </div>
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Root Dashboard ─────────────────────────────────────────────────────────────
 
 export default function Dashboard() {
-  const [tab, setTab] = useState<'run' | 'score' | 'matrix'>('run')
+  const [tab, setTab] = useState<'news' | 'run' | 'score' | 'matrix'>('news')
+  const [newsItems, setNewsItems] = useState<NewsItem[]>([])
 
   const tabs = [
+    { key: 'news' as const, label: '뉴스 수집' },
     { key: 'run' as const, label: '실험 실행' },
     { key: 'score' as const, label: '블라인드 채점' },
     { key: 'matrix' as const, label: '비용/품질 매트릭스' },
   ]
+
+  function handleNewsLoaded(items: NewsItem[]) {
+    setNewsItems(items)
+    setTab('run')
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -630,13 +809,17 @@ export default function Dashboard() {
               }`}
             >
               {t.label}
+              {t.key === 'run' && newsItems.length > 0 && (
+                <span className="ml-1.5 text-xs bg-blue-600 text-white px-1.5 py-0.5 rounded-full">{newsItems.length}</span>
+              )}
             </button>
           ))}
         </div>
       </div>
 
       <main className="px-6 py-5 max-w-5xl">
-        {tab === 'run' && <RunPanel />}
+        {tab === 'news' && <NewsPanel onNewsLoaded={handleNewsLoaded} />}
+        {tab === 'run' && <RunPanel newsItems={newsItems} />}
         {tab === 'score' && <ScoringPanel />}
         {tab === 'matrix' && <MatrixPanel />}
       </main>

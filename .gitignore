@@ -14,3 +14,4 @@ reports/
 *.egg-info/
 .venv/
 venv/
+.vercel
