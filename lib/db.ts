@@ -129,15 +129,37 @@ export async function saveBriefing(slot: string, content: string, provider: stri
   `
 }
 
-export async function getLatestBriefings(): Promise<BriefingRecord[]> {
+export async function getLatestBriefings(kstDate?: string): Promise<BriefingRecord[]> {
+  try {
+    const sql = getSql()
+    const rows = kstDate
+      ? await sql`
+          SELECT DISTINCT ON (slot) id, slot, content, provider, item_count, created_at::text
+          FROM briefings
+          WHERE (created_at AT TIME ZONE 'Asia/Seoul')::date = ${kstDate}::date
+          ORDER BY slot, created_at DESC
+        `
+      : await sql`
+          SELECT DISTINCT ON (slot) id, slot, content, provider, item_count, created_at::text
+          FROM briefings
+          ORDER BY slot, created_at DESC
+        `
+    return rows as BriefingRecord[]
+  } catch {
+    return []
+  }
+}
+
+export async function getBriefingDates(): Promise<string[]> {
   try {
     const sql = getSql()
     const rows = await sql`
-      SELECT DISTINCT ON (slot) id, slot, content, provider, item_count, created_at::text
+      SELECT DISTINCT (created_at AT TIME ZONE 'Asia/Seoul')::date::text AS kst_date
       FROM briefings
-      ORDER BY slot, created_at DESC
+      ORDER BY kst_date DESC
+      LIMIT 30
     `
-    return rows as BriefingRecord[]
+    return (rows as { kst_date: string }[]).map(r => r.kst_date)
   } catch {
     return []
   }

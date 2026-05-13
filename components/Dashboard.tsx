@@ -946,7 +946,7 @@ function TodayBriefingStatus() {
   )
 }
 
-function BriefingPanel({ newsItems }: { newsItems: NewsItem[] }) {
+function BriefingPanel({ newsItems: propNews }: { newsItems: NewsItem[] }) {
   const [loading, setLoading] = useState(false)
   const [report, setReport] = useState('')
   const [provider, setProvider] = useState<ProviderName>('openai')
@@ -956,6 +956,25 @@ function BriefingPanel({ newsItems }: { newsItems: NewsItem[] }) {
   const [activeId, setActiveId] = useState<string | null>(null)
   const [publishing, setPublishing] = useState(false)
   const [publishedSlot, setPublishedSlot] = useState<string | null>(null)
+  const [autoNews, setAutoNews] = useState<NewsItem[]>([])
+  const [autoFetching, setAutoFetching] = useState(false)
+  const [autoFetchedAt, setAutoFetchedAt] = useState<string | null>(null)
+
+  // Use manually selected news if available, otherwise auto-fetched
+  const newsItems = propNews.length > 0 ? propNews : autoNews
+
+  // Auto-fetch news on mount
+  useEffect(() => {
+    setAutoFetching(true)
+    fetch('/api/news?sources=neon,dart,cnn&days=1&limit=150&minLength=20')
+      .then(r => r.json())
+      .then(d => {
+        setAutoNews(d.items ?? [])
+        setAutoFetchedAt(new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }))
+      })
+      .catch(() => {})
+      .finally(() => setAutoFetching(false))
+  }, [])
 
   useEffect(() => {
     try {
@@ -1090,9 +1109,20 @@ function BriefingPanel({ newsItems }: { newsItems: NewsItem[] }) {
           <p className="text-sm text-gray-500 mt-0.5">수집된 뉴스를 종합해 AI 리서치 센터장 관점의 일일 코멘트를 생성합니다.</p>
         </div>
 
-        {newsItems.length === 0 ? (
+        {/* Auto-fetch status */}
+        <div className="flex items-center gap-2 text-xs text-gray-400">
+          {autoFetching ? (
+            <><span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />뉴스 자동 수집 중...</>
+          ) : autoFetchedAt ? (
+            <><span className="w-1.5 h-1.5 rounded-full bg-green-400" />{autoFetchedAt} 기준 {autoNews.length}건 수집됨
+              {propNews.length > 0 && <span className="ml-1 text-blue-500">(수동 선택 {propNews.length}건 사용 중)</span>}
+            </>
+          ) : null}
+        </div>
+
+        {newsItems.length === 0 && !autoFetching ? (
           <div className="text-sm text-gray-400 bg-gray-50 rounded-lg p-4">
-            먼저 <strong>뉴스 수집</strong> 탭에서 데이터를 가져온 후 분석에 전달하세요.
+            뉴스를 불러오지 못했습니다. DB 연결을 확인하세요.
           </div>
         ) : (
           <div className="flex flex-wrap gap-4 items-end">

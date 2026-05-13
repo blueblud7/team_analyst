@@ -3,8 +3,9 @@ import { saveBriefing, getLatestBriefings } from '@/lib/db'
 
 export const maxDuration = 30
 
-export async function GET() {
-  const briefings = await getLatestBriefings()
+export async function GET(req: NextRequest) {
+  const date = req.nextUrl.searchParams.get('date') ?? undefined
+  const briefings = await getLatestBriefings(date)
   return NextResponse.json({ briefings })
 }
 
