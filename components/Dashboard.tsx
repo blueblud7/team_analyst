@@ -904,7 +904,7 @@ function BriefingPanel({ newsItems }: { newsItems: NewsItem[] }) {
     <div className="space-y-5">
       <div className="bg-white rounded-xl border p-5 space-y-4">
         <div>
-          <h2 className="font-bold text-gray-900 text-lg">윤센이 브리핑</h2>
+          <h2 className="font-bold text-gray-900 text-lg">윤쎈 브리핑</h2>
           <p className="text-sm text-gray-500 mt-0.5">수집된 뉴스를 종합해 센터장 관점의 일일 코멘트를 생성합니다.</p>
         </div>
 
@@ -937,7 +937,7 @@ function BriefingPanel({ newsItems }: { newsItems: NewsItem[] }) {
               disabled={loading}
               className="px-6 py-2 bg-gray-900 text-white rounded-lg font-medium hover:bg-gray-700 disabled:opacity-50 transition"
             >
-              {loading ? '윤센이 작성 중...' : '브리핑 생성'}
+              {loading ? '윤쎈 작성 중...' : '브리핑 생성'}
             </button>
           </div>
         )}
@@ -951,7 +951,7 @@ function BriefingPanel({ newsItems }: { newsItems: NewsItem[] }) {
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-gray-900" />
-              <span className="text-sm font-semibold text-gray-700">윤센이 (YoonSen-i)</span>
+              <span className="text-sm font-semibold text-gray-700">윤쎈 (YoonSen)</span>
               <span className="text-xs text-gray-400">AI 리서치 센터장</span>
             </div>
             {report && (
@@ -981,7 +981,7 @@ export default function Dashboard() {
 
   const tabs = [
     { key: 'news' as const, label: '뉴스 수집' },
-    { key: 'briefing' as const, label: '윤센이 브리핑' },
+    { key: 'briefing' as const, label: '윤쎈 브리핑' },
     { key: 'run' as const, label: '실험 실행 (개별)' },
     { key: 'score' as const, label: '채점' },
     { key: 'matrix' as const, label: '비용/품질' },
@@ -995,8 +995,8 @@ export default function Dashboard() {
   return (
     <div className="min-h-screen bg-gray-50">
       <header className="bg-white border-b px-6 py-4">
-        <h1 className="text-xl font-bold text-gray-900">윤센이 PoC — AI 리서치 센터장 브리핑 시스템</h1>
-        <p className="text-sm text-gray-500 mt-0.5">텔레그램 채널 19,000+ 메시지 → 윤센이 종합 코멘트</p>
+        <h1 className="text-xl font-bold text-gray-900">윤쎈 PoC — AI 리서치 센터장 브리핑 시스템</h1>
+        <p className="text-sm text-gray-500 mt-0.5">텔레그램 채널 19,000+ 메시지 → 윤쎈 종합 코멘트</p>
       </header>
 
       <div className="px-6 pt-5">

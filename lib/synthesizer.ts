@@ -9,7 +9,7 @@ export interface BriefingInput {
   posted_at: string
 }
 
-const YOONSEN_SYSTEM = `당신은 윤센이(YoonSen-i)입니다.
+const YOONSEN_SYSTEM = `당신은 윤쎈(YoonSen)입니다.
 국내 최고 수준의 AI 애널리스트 리서치 센터장으로, 매일 아침 CEO와 포트폴리오 매니저에게 시장 브리핑을 제공합니다.
 
 ## 역할
@@ -31,7 +31,7 @@ const BRIEFING_PROMPT = (inputs: BriefingInput[], date: string) => {
   return `오늘(${date}) 수집된 주요 뉴스 ${inputs.length}건입니다. 종합 브리핑을 작성하세요.
 
 ## 출력 형식 (마크다운)
-# 윤센이 브리핑 — ${date}
+# 윤쎈 브리핑 — ${date}
 
 ## 핵심 메시지
 (3줄 이내. 오늘 가장 중요한 흐름)
