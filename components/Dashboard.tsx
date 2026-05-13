@@ -824,33 +824,183 @@ function NewsPanel({ onNewsLoaded }: { onNewsLoaded: (items: NewsItem[]) => void
   )
 }
 
+// ── Briefing Panel ────────────────────────────────────────────────────────────
+
+function BriefingPanel({ newsItems }: { newsItems: NewsItem[] }) {
+  const [loading, setLoading] = useState(false)
+  const [report, setReport] = useState('')
+  const [provider, setProvider] = useState<ProviderName>('openai')
+  const [error, setError] = useState<string | null>(null)
+  const [itemCount, setItemCount] = useState(50)
+
+  async function generate() {
+    if (!newsItems.length) return
+    setLoading(true)
+    setReport('')
+    setError(null)
+
+    const items = newsItems.slice(0, itemCount)
+    try {
+      const res = await fetch('/api/report', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ items, provider, tier: 'high' }),
+      })
+      if (!res.ok || !res.body) throw new Error(await res.text())
+
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        // parse Vercel AI data stream chunks (0:"text" lines)
+        const lines = buffer.split('\n')
+        buffer = lines.pop() ?? ''
+        for (const line of lines) {
+          if (line.startsWith('0:')) {
+            try {
+              const text = JSON.parse(line.slice(2))
+              setReport(prev => prev + text)
+            } catch { /* skip malformed */ }
+          }
+        }
+      }
+    } catch (e) {
+      setError(String(e))
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Simple markdown renderer (bold, headers, horizontal rule)
+  function renderMarkdown(text: string) {
+    return text
+      .split('\n')
+      .map((line, i) => {
+        if (line.startsWith('# ')) return <h1 key={i} className="text-xl font-bold text-gray-900 mt-4 mb-2">{line.slice(2)}</h1>
+        if (line.startsWith('## ')) return <h2 key={i} className="text-base font-bold text-gray-800 mt-4 mb-1 border-b pb-1">{line.slice(3)}</h2>
+        if (line.startsWith('### ')) return <h3 key={i} className="text-sm font-semibold text-gray-700 mt-3 mb-1">{line.slice(4)}</h3>
+        if (line === '---') return <hr key={i} className="my-3 border-gray-200" />
+        if (line.startsWith('⚠️')) return <p key={i} className="text-xs text-gray-400 mt-2">{line}</p>
+        if (line.trim() === '') return <div key={i} className="h-1" />
+        // bold
+        const parts = line.split(/(\*\*[^*]+\*\*)/)
+        return (
+          <p key={i} className="text-sm text-gray-700 leading-relaxed">
+            {parts.map((p, j) =>
+              p.startsWith('**') && p.endsWith('**')
+                ? <strong key={j}>{p.slice(2, -2)}</strong>
+                : p
+            )}
+          </p>
+        )
+      })
+  }
+
+  return (
+    <div className="space-y-5">
+      <div className="bg-white rounded-xl border p-5 space-y-4">
+        <div>
+          <h2 className="font-bold text-gray-900 text-lg">윤센이 브리핑</h2>
+          <p className="text-sm text-gray-500 mt-0.5">수집된 뉴스를 종합해 센터장 관점의 일일 코멘트를 생성합니다.</p>
+        </div>
+
+        {newsItems.length === 0 ? (
+          <div className="text-sm text-gray-400 bg-gray-50 rounded-lg p-4">
+            먼저 <strong>뉴스 수집</strong> 탭에서 데이터를 가져온 후 분석에 전달하세요.
+          </div>
+        ) : (
+          <div className="flex flex-wrap gap-4 items-end">
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">LLM 모델</label>
+              <select value={provider} onChange={e => setProvider(e.target.value as ProviderName)} className="border rounded px-2 py-1.5 text-sm">
+                {PROVIDER_NAMES.filter(p => PROVIDER_CONFIG[p].enabled).map(p => (
+                  <option key={p} value={p}>{p} (high)</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">투입 뉴스 수</label>
+              <select value={itemCount} onChange={e => setItemCount(Number(e.target.value))} className="border rounded px-2 py-1.5 text-sm">
+                <option value={20}>20건</option>
+                <option value={50}>50건</option>
+                <option value={100}>100건</option>
+                <option value={200}>200건</option>
+              </select>
+              <span className="ml-2 text-xs text-gray-400">/ 전체 {newsItems.length}건</span>
+            </div>
+            <button
+              onClick={generate}
+              disabled={loading}
+              className="px-6 py-2 bg-gray-900 text-white rounded-lg font-medium hover:bg-gray-700 disabled:opacity-50 transition"
+            >
+              {loading ? '윤센이 작성 중...' : '브리핑 생성'}
+            </button>
+          </div>
+        )}
+
+        {error && <p className="text-sm text-red-500">{error}</p>}
+      </div>
+
+      {/* Report output */}
+      {(report || loading) && (
+        <div className="bg-white rounded-xl border p-6">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-gray-900" />
+              <span className="text-sm font-semibold text-gray-700">윤센이 (YoonSen-i)</span>
+              <span className="text-xs text-gray-400">AI 리서치 센터장</span>
+            </div>
+            {report && (
+              <button
+                onClick={() => navigator.clipboard.writeText(report)}
+                className="text-xs text-gray-400 hover:text-gray-600"
+              >
+                복사
+              </button>
+            )}
+          </div>
+          <div className="prose-sm max-w-none">
+            {renderMarkdown(report)}
+            {loading && <span className="inline-block w-1.5 h-4 bg-gray-400 animate-pulse ml-0.5" />}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Root Dashboard ─────────────────────────────────────────────────────────────
 
 export default function Dashboard() {
-  const [tab, setTab] = useState<'news' | 'run' | 'score' | 'matrix'>('news')
+  const [tab, setTab] = useState<'news' | 'briefing' | 'run' | 'score' | 'matrix'>('news')
   const [newsItems, setNewsItems] = useState<NewsItem[]>([])
 
   const tabs = [
     { key: 'news' as const, label: '뉴스 수집' },
-    { key: 'run' as const, label: '실험 실행' },
-    { key: 'score' as const, label: '블라인드 채점' },
-    { key: 'matrix' as const, label: '비용/품질 매트릭스' },
+    { key: 'briefing' as const, label: '윤센이 브리핑' },
+    { key: 'run' as const, label: '실험 실행 (개별)' },
+    { key: 'score' as const, label: '채점' },
+    { key: 'matrix' as const, label: '비용/품질' },
   ]
 
   function handleNewsLoaded(items: NewsItem[]) {
     setNewsItems(items)
-    setTab('run')
+    setTab('briefing')
   }
 
   return (
     <div className="min-h-screen bg-gray-50">
       <header className="bg-white border-b px-6 py-4">
-        <h1 className="text-xl font-bold text-gray-900">윤센이 PoC — AI 애널리스트 평가 대시보드</h1>
-        <p className="text-sm text-gray-500 mt-0.5">5개 LLM 프로바이더 블라인드 비교 실험</p>
+        <h1 className="text-xl font-bold text-gray-900">윤센이 PoC — AI 리서치 센터장 브리핑 시스템</h1>
+        <p className="text-sm text-gray-500 mt-0.5">텔레그램 채널 19,000+ 메시지 → 윤센이 종합 코멘트</p>
       </header>
 
       <div className="px-6 pt-5">
-        <div className="flex gap-1 bg-gray-100 p-1 rounded-lg w-fit">
+        <div className="flex gap-1 bg-gray-100 p-1 rounded-lg w-fit flex-wrap">
           {tabs.map(t => (
             <button
               key={t.key}
@@ -862,7 +1012,7 @@ export default function Dashboard() {
               }`}
             >
               {t.label}
-              {t.key === 'run' && newsItems.length > 0 && (
+              {(t.key === 'briefing' || t.key === 'run') && newsItems.length > 0 && (
                 <span className="ml-1.5 text-xs bg-blue-600 text-white px-1.5 py-0.5 rounded-full">{newsItems.length}</span>
               )}
             </button>
@@ -870,8 +1020,9 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <main className="px-6 py-5 max-w-5xl">
+      <main className="px-6 py-5 max-w-4xl">
         {tab === 'news' && <NewsPanel onNewsLoaded={handleNewsLoaded} />}
+        {tab === 'briefing' && <BriefingPanel newsItems={newsItems} />}
         {tab === 'run' && <RunPanel newsItems={newsItems} />}
         {tab === 'score' && <ScoringPanel />}
         {tab === 'matrix' && <MatrixPanel />}
