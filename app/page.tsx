@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 
 interface BriefingRecord {
@@ -31,6 +31,24 @@ function addDays(dateStr: string, n: number): string {
 function formatKSTDate(dateStr: string): string {
   const d = new Date(dateStr + 'T00:00:00+09:00')
   return d.toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'short' })
+}
+
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false)
+  const copy = useCallback(() => {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    })
+  }, [text])
+  return (
+    <button
+      onClick={copy}
+      className="text-xs text-gray-400 hover:text-gray-600 transition px-2 py-1 rounded hover:bg-gray-100 shrink-0"
+    >
+      {copied ? '✓ 복사됨' : '복사'}
+    </button>
+  )
 }
 
 function BriefingContent({ content }: { content: string }) {
@@ -133,13 +151,16 @@ export default function PublicPage() {
                       <span className={`inline-block text-xs font-semibold px-2 py-0.5 rounded-full ${badge} mb-1`}>{en}</span>
                       <h2 className="text-lg font-bold text-gray-900">{key} 브리핑</h2>
                     </div>
-                    {b ? (
-                      <span className="text-xs text-gray-400 shrink-0 pt-1">
-                        {new Date(b.created_at).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })} 게시 · {b.item_count}건
-                      </span>
-                    ) : (
-                      <span className="text-xs text-gray-300 shrink-0 pt-1">미게시</span>
-                    )}
+                    <div className="flex items-center gap-2 shrink-0 pt-1">
+                      {b && <CopyButton text={b.content} />}
+                      {b ? (
+                        <span className="text-xs text-gray-400">
+                          {new Date(b.created_at).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })} · {b.item_count}건
+                        </span>
+                      ) : (
+                        <span className="text-xs text-gray-300">미게시</span>
+                      )}
+                    </div>
                   </div>
                   {b ? (
                     <BriefingContent content={b.content} />
