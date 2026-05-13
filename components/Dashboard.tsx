@@ -791,7 +791,7 @@ function NewsPanel({ onNewsLoaded }: { onNewsLoaded: (items: NewsItem[]) => void
                 disabled={selected.size === 0}
                 className="px-3 py-1.5 bg-green-600 text-white text-xs font-medium rounded-lg hover:bg-green-700 disabled:opacity-50 transition"
               >
-                선택 {selected.size}건 → 실험 실행 전달
+                선택 {selected.size}건 → 브리핑 전달
               </button>
             </div>
           </div>
@@ -826,20 +826,87 @@ function NewsPanel({ onNewsLoaded }: { onNewsLoaded: (items: NewsItem[]) => void
 
 // ── Briefing Panel ────────────────────────────────────────────────────────────
 
+interface HistoryEntry {
+  id: string
+  ts: string
+  provider: string
+  itemCount: number
+  report: string
+  slot: string | null
+}
+
+const PUBLISH_SLOTS = ['장전', '장중', '장후'] as const
+
+function renderMarkdown(text: string) {
+  return text.split('\n').map((line, i) => {
+    if (line.startsWith('# '))  return <h1 key={i} className="text-xl font-bold text-gray-900 mt-4 mb-2">{line.slice(2)}</h1>
+    if (line.startsWith('## ')) return <h2 key={i} className="text-base font-bold text-gray-800 mt-4 mb-1 border-b pb-1">{line.slice(3)}</h2>
+    if (line.startsWith('### ')) return <h3 key={i} className="text-sm font-semibold text-gray-700 mt-3 mb-1">{line.slice(4)}</h3>
+    if (line === '---') return <hr key={i} className="my-3 border-gray-200" />
+    if (line.startsWith('⚠️')) return <p key={i} className="text-xs text-gray-400 mt-2">{line}</p>
+    if (line.trim() === '') return <div key={i} className="h-1" />
+    const parts = line.split(/(\*\*[^*]+\*\*)/)
+    return (
+      <p key={i} className="text-sm text-gray-700 leading-relaxed">
+        {parts.map((p, j) =>
+          p.startsWith('**') && p.endsWith('**')
+            ? <strong key={j}>{p.slice(2, -2)}</strong>
+            : p
+        )}
+      </p>
+    )
+  })
+}
+
 function BriefingPanel({ newsItems }: { newsItems: NewsItem[] }) {
   const [loading, setLoading] = useState(false)
   const [report, setReport] = useState('')
   const [provider, setProvider] = useState<ProviderName>('openai')
   const [error, setError] = useState<string | null>(null)
   const [itemCount, setItemCount] = useState(50)
+  const [history, setHistory] = useState<HistoryEntry[]>([])
+  const [activeId, setActiveId] = useState<string | null>(null)
+  const [publishing, setPublishing] = useState(false)
+  const [publishedSlot, setPublishedSlot] = useState<string | null>(null)
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('briefingHistory')
+      if (raw) setHistory(JSON.parse(raw))
+    } catch {}
+  }, [])
+
+  function saveToHistory(r: string, prov: string, count: number) {
+    const entry: HistoryEntry = {
+      id: Date.now().toString(),
+      ts: new Date().toISOString(),
+      provider: prov,
+      itemCount: count,
+      report: r,
+      slot: null,
+    }
+    const next = [entry, ...history].slice(0, 20)
+    setHistory(next)
+    setActiveId(entry.id)
+    try { localStorage.setItem('briefingHistory', JSON.stringify(next)) } catch {}
+  }
+
+  function updateHistorySlot(id: string, slot: string) {
+    const next = history.map(h => h.id === id ? { ...h, slot } : h)
+    setHistory(next)
+    try { localStorage.setItem('briefingHistory', JSON.stringify(next)) } catch {}
+  }
 
   async function generate() {
     if (!newsItems.length) return
     setLoading(true)
     setReport('')
     setError(null)
+    setActiveId(null)
+    setPublishedSlot(null)
 
     const items = newsItems.slice(0, itemCount)
+    let full = ''
     try {
       const res = await fetch('/api/report', {
         method: 'POST',
@@ -849,25 +916,21 @@ function BriefingPanel({ newsItems }: { newsItems: NewsItem[] }) {
       if (!res.ok || !res.body) throw new Error(await res.text())
 
       const reader = res.body.getReader()
-      const decoder = new TextDecoder()
-      let buffer = ''
-
+      const dec = new TextDecoder()
+      let buf = ''
       while (true) {
         const { done, value } = await reader.read()
         if (done) break
-        buffer += decoder.decode(value, { stream: true })
-        // parse Vercel AI data stream chunks (0:"text" lines)
-        const lines = buffer.split('\n')
-        buffer = lines.pop() ?? ''
+        buf += dec.decode(value, { stream: true })
+        const lines = buf.split('\n')
+        buf = lines.pop() ?? ''
         for (const line of lines) {
           if (line.startsWith('0:')) {
-            try {
-              const text = JSON.parse(line.slice(2))
-              setReport(prev => prev + text)
-            } catch { /* skip malformed */ }
+            try { const t = JSON.parse(line.slice(2)); full += t; setReport(p => p + t) } catch { /* skip */ }
           }
         }
       }
+      saveToHistory(full, provider, items.length)
     } catch (e) {
       setError(String(e))
     } finally {
@@ -875,37 +938,65 @@ function BriefingPanel({ newsItems }: { newsItems: NewsItem[] }) {
     }
   }
 
-  // Simple markdown renderer (bold, headers, horizontal rule)
-  function renderMarkdown(text: string) {
-    return text
-      .split('\n')
-      .map((line, i) => {
-        if (line.startsWith('# ')) return <h1 key={i} className="text-xl font-bold text-gray-900 mt-4 mb-2">{line.slice(2)}</h1>
-        if (line.startsWith('## ')) return <h2 key={i} className="text-base font-bold text-gray-800 mt-4 mb-1 border-b pb-1">{line.slice(3)}</h2>
-        if (line.startsWith('### ')) return <h3 key={i} className="text-sm font-semibold text-gray-700 mt-3 mb-1">{line.slice(4)}</h3>
-        if (line === '---') return <hr key={i} className="my-3 border-gray-200" />
-        if (line.startsWith('⚠️')) return <p key={i} className="text-xs text-gray-400 mt-2">{line}</p>
-        if (line.trim() === '') return <div key={i} className="h-1" />
-        // bold
-        const parts = line.split(/(\*\*[^*]+\*\*)/)
-        return (
-          <p key={i} className="text-sm text-gray-700 leading-relaxed">
-            {parts.map((p, j) =>
-              p.startsWith('**') && p.endsWith('**')
-                ? <strong key={j}>{p.slice(2, -2)}</strong>
-                : p
-            )}
-          </p>
-        )
+  async function publish(slot: string) {
+    if (!report || publishing) return
+    setPublishing(true)
+    try {
+      await fetch('/api/briefings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ slot, content: report, provider, itemCount }),
       })
+      setPublishedSlot(slot)
+      if (activeId) updateHistorySlot(activeId, slot)
+    } catch (e) {
+      setError(String(e))
+    } finally {
+      setPublishing(false)
+    }
+  }
+
+  function loadHistory(entry: HistoryEntry) {
+    setReport(entry.report)
+    setActiveId(entry.id)
+    setPublishedSlot(entry.slot)
+    setError(null)
   }
 
   return (
     <div className="space-y-5">
+      {/* History */}
+      {history.length > 0 && (
+        <div className="bg-white rounded-xl border p-4">
+          <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">브리핑 히스토리 ({history.length}건)</h3>
+          <div className="space-y-1 max-h-44 overflow-y-auto">
+            {history.map(h => (
+              <button
+                key={h.id}
+                onClick={() => loadHistory(h)}
+                className={`w-full text-left px-3 py-2 rounded-lg text-xs transition ${
+                  activeId === h.id ? 'bg-gray-900 text-white' : 'bg-gray-50 hover:bg-gray-100 text-gray-700'
+                }`}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-medium">
+                    {new Date(h.ts).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                  <span className={activeId === h.id ? 'text-gray-400' : 'text-gray-400'}>
+                    {h.provider} · {h.itemCount}건{h.slot ? ` · ${h.slot} ✓` : ''}
+                  </span>
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Controls */}
       <div className="bg-white rounded-xl border p-5 space-y-4">
         <div>
-          <h2 className="font-bold text-gray-900 text-lg">윤쎈 브리핑</h2>
-          <p className="text-sm text-gray-500 mt-0.5">수집된 뉴스를 종합해 센터장 관점의 일일 코멘트를 생성합니다.</p>
+          <h2 className="font-bold text-gray-900 text-lg">알파리서치 브리핑</h2>
+          <p className="text-sm text-gray-500 mt-0.5">수집된 뉴스를 종합해 AI 리서치 센터장 관점의 일일 코멘트를 생성합니다.</p>
         </div>
 
         {newsItems.length === 0 ? (
@@ -918,7 +1009,7 @@ function BriefingPanel({ newsItems }: { newsItems: NewsItem[] }) {
               <label className="block text-xs text-gray-500 mb-1">LLM 모델</label>
               <select value={provider} onChange={e => setProvider(e.target.value as ProviderName)} className="border rounded px-2 py-1.5 text-sm">
                 {PROVIDER_NAMES.filter(p => PROVIDER_CONFIG[p].enabled).map(p => (
-                  <option key={p} value={p}>{p} (high)</option>
+                  <option key={p} value={p}>{p}</option>
                 ))}
               </select>
             </div>
@@ -937,7 +1028,7 @@ function BriefingPanel({ newsItems }: { newsItems: NewsItem[] }) {
               disabled={loading}
               className="px-6 py-2 bg-gray-900 text-white rounded-lg font-medium hover:bg-gray-700 disabled:opacity-50 transition"
             >
-              {loading ? '윤쎈 작성 중...' : '브리핑 생성'}
+              {loading ? '분석 중...' : '브리핑 생성'}
             </button>
           </div>
         )}
@@ -948,21 +1039,43 @@ function BriefingPanel({ newsItems }: { newsItems: NewsItem[] }) {
       {/* Report output */}
       {(report || loading) && (
         <div className="bg-white rounded-xl border p-6">
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
             <div className="flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-gray-900" />
-              <span className="text-sm font-semibold text-gray-700">윤쎈 (YoonSen)</span>
+              <span className="text-sm font-semibold text-gray-700">알파리서치 (AlphaResearch)</span>
               <span className="text-xs text-gray-400">AI 리서치 센터장</span>
             </div>
-            {report && (
-              <button
-                onClick={() => navigator.clipboard.writeText(report)}
-                className="text-xs text-gray-400 hover:text-gray-600"
-              >
-                복사
-              </button>
+            {report && !loading && (
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-xs text-gray-500">공개 게시:</span>
+                {PUBLISH_SLOTS.map(slot => (
+                  <button
+                    key={slot}
+                    onClick={() => publish(slot)}
+                    disabled={publishing}
+                    className={`px-2.5 py-1 text-xs rounded-md border font-medium transition ${
+                      publishedSlot === slot
+                        ? 'bg-green-600 text-white border-green-600'
+                        : 'text-gray-600 border-gray-300 hover:border-gray-500 hover:bg-gray-50'
+                    }`}
+                  >
+                    {slot}{publishedSlot === slot ? ' ✓' : ''}
+                  </button>
+                ))}
+                <button
+                  onClick={() => navigator.clipboard.writeText(report)}
+                  className="text-xs text-gray-400 hover:text-gray-600 ml-1"
+                >
+                  복사
+                </button>
+              </div>
             )}
           </div>
+          {publishedSlot && (
+            <div className="mb-4 text-xs text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2">
+              ✓ {publishedSlot} 브리핑으로 공개 페이지에 게시되었습니다. <a href="/" target="_blank" className="underline">공개 페이지 보기 →</a>
+            </div>
+          )}
           <div className="prose-sm max-w-none">
             {renderMarkdown(report)}
             {loading && <span className="inline-block w-1.5 h-4 bg-gray-400 animate-pulse ml-0.5" />}
@@ -981,7 +1094,7 @@ export default function Dashboard() {
 
   const tabs = [
     { key: 'news' as const, label: '뉴스 수집' },
-    { key: 'briefing' as const, label: '윤쎈 브리핑' },
+    { key: 'briefing' as const, label: '알파리서치 브리핑' },
     { key: 'run' as const, label: '실험 실행 (개별)' },
     { key: 'score' as const, label: '채점' },
     { key: 'matrix' as const, label: '비용/품질' },
@@ -995,8 +1108,8 @@ export default function Dashboard() {
   return (
     <div className="min-h-screen bg-gray-50">
       <header className="bg-white border-b px-6 py-4">
-        <h1 className="text-xl font-bold text-gray-900">윤쎈 PoC — AI 리서치 센터장 브리핑 시스템</h1>
-        <p className="text-sm text-gray-500 mt-0.5">텔레그램 채널 19,000+ 메시지 → 윤쎈 종합 코멘트</p>
+        <h1 className="text-xl font-bold text-gray-900">알파리서치 Admin — AI 리서치 센터장 브리핑 시스템</h1>
+        <p className="text-sm text-gray-500 mt-0.5">텔레그램 채널 19,000+ 메시지 → 알파리서치 종합 브리핑 · <a href="/" target="_blank" className="text-blue-500 hover:underline">공개 페이지 →</a></p>
       </header>
 
       <div className="px-6 pt-5">

@@ -93,3 +93,46 @@ export async function getStats(): Promise<{ channels: number; messages: number; 
     return { channels: 0, messages: 0, connected: false }
   }
 }
+
+// ── Briefings (published to public page) ──────────────────────────────────────
+
+export interface BriefingRecord {
+  id: number
+  slot: string
+  content: string
+  provider: string
+  item_count: number
+  created_at: string
+}
+
+export async function saveBriefing(slot: string, content: string, provider: string, itemCount: number): Promise<void> {
+  const sql = getSql()
+  await sql`
+    CREATE TABLE IF NOT EXISTS briefings (
+      id SERIAL PRIMARY KEY,
+      slot VARCHAR(10) NOT NULL,
+      content TEXT NOT NULL,
+      provider VARCHAR(50) DEFAULT '',
+      item_count INTEGER DEFAULT 0,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `
+  await sql`
+    INSERT INTO briefings (slot, content, provider, item_count)
+    VALUES (${slot}, ${content}, ${provider}, ${itemCount})
+  `
+}
+
+export async function getLatestBriefings(): Promise<BriefingRecord[]> {
+  try {
+    const sql = getSql()
+    const rows = await sql`
+      SELECT DISTINCT ON (slot) id, slot, content, provider, item_count, created_at::text
+      FROM briefings
+      ORDER BY slot, created_at DESC
+    `
+    return rows as BriefingRecord[]
+  } catch {
+    return []
+  }
+}

@@ -2,8 +2,8 @@ import type { Metadata } from 'next'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: '윤쎈 PoC — AI 애널리스트 평가',
-  description: '5개 LLM 프로바이더 블라인드 비교 실험 대시보드',
+  title: '알파리서치 — AI 리서치 센터장 브리핑',
+  description: '알파리서치 AI가 매일 장전·장중·장후 시장 브리핑을 제공합니다.',
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
