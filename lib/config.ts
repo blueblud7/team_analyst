@@ -64,17 +64,57 @@ export const PROVIDER_CONFIG: Record<ProviderName, ProviderConfig> = {
 }
 
 export const CHANNEL_CONFIG: Record<string, { tier: number; weight: number }> = {
-  '키움증권_한지영':   { tier: 1, weight: 1.0 },
-  '미래에셋증권_퀀트': { tier: 1, weight: 1.0 },
+  // ── Tier 1: 증권사 공식 리서치 ──────────────────────────────────────────────
+  '키움증권 리서치센터':                    { tier: 1, weight: 1.0 },
+  '키움증권 전략/시황 한지영':              { tier: 1, weight: 1.0 },
+  '한화투자증권 리서치센터 투자전략팀':      { tier: 1, weight: 1.0 },
+  '[미래에셋증권 전략/퀀트 유명간]':        { tier: 1, weight: 1.0 },
+  '유안타 News 라운지':                    { tier: 1, weight: 1.0 },
+  '[시그널랩] Signal Lab 리서치':          { tier: 1, weight: 1.0 },
+  // ── Tier 2: 검증된 애널/전문 채널 ───────────────────────────────────────────
+  'AWAKE - 실시간 주식 공시 정리채널':      { tier: 2, weight: 0.7 },
+  'The Wall Street Journal World News':    { tier: 2, weight: 0.7 },
+  '에테르의 일본&미국 리서치':              { tier: 2, weight: 0.7 },
+  'Aurum Research - 투자 정보 공유':       { tier: 2, weight: 0.7 },
+  '나박 AI : 제일 빠른 진짜 중요한 외신 속보': { tier: 2, weight: 0.7 },
+  '한투증권 중국/신흥국 정정영':             { tier: 2, weight: 0.7 },
+  'AI Report Digest':                      { tier: 2, weight: 0.7 },
+  '매경 월가월부':                          { tier: 2, weight: 0.7 },
+  '한경바이오인사이트':                     { tier: 2, weight: 0.7 },
+  '미국 제약-바이오 주식/약장수':           { tier: 2, weight: 0.7 },
+  '제약/바이오/미용 원리버 Oneriver':       { tier: 2, weight: 0.7 },
+  '글로벌바이오아저씨':                     { tier: 2, weight: 0.7 },
+  'Nihil\'s view of data & information':   { tier: 2, weight: 0.7 },
+  'Quick Financial News':                  { tier: 2, weight: 0.7 },
+  // ── Tier 3: 뉴스 피드 / 시황 클리핑 ───────────────────────────────────────
+  'Market News Feed':                      { tier: 3, weight: 0.5 },
+  '빠른 주식 뉴스':                         { tier: 3, weight: 0.5 },
+  '머니서퍼🏄🏻‍♂️ 가장빠른 주식뉴스📈':     { tier: 3, weight: 0.5 },
+  'Donald J. Trump':                       { tier: 3, weight: 0.5 },
+  'KK Kontemporaries':                     { tier: 3, weight: 0.5 },
+  // ── Tier 4: 익명/커뮤니티 ─────────────────────────────────────────────────
+  '해외정보 분석(국제정치경제지정학 아이비리그 교수 기똥차게 부려먹기)': { tier: 4, weight: 0.2 },
+  '텐렙':                                  { tier: 4, weight: 0.2 },
+  '선진짱 주식공부방':                      { tier: 4, weight: 0.2 },
+  '시장 이야기 by 제이슨':                  { tier: 4, weight: 0.2 },
+  '잠실개미&10X\'s N.E.R.D.S':            { tier: 4, weight: 0.2 },
+  '곰젤리 매매일지':                        { tier: 4, weight: 0.2 },
+  '도PB의 생존투자':                        { tier: 4, weight: 0.2 },
+  // ── 하드코딩 샘플용 (기존 유지) ───────────────────────────────────────────
+  '키움증권_한지영':    { tier: 1, weight: 1.0 },
+  '미래에셋증권_퀀트':  { tier: 1, weight: 1.0 },
   '유진투자증권_리포트': { tier: 1, weight: 1.0 },
   '한화투자증권_리포트': { tier: 1, weight: 1.0 },
-  '삼성증권_리포트':   { tier: 1, weight: 1.0 },
-  '실명_애널_채널_예시': { tier: 2, weight: 0.7 },
-  '채권_아침시황':     { tier: 3, weight: 0.5 },
-  '주식_아침시황':     { tier: 3, weight: 0.5 },
-  '연준_발언_클리핑':  { tier: 3, weight: 0.5 },
-  '한국경제_텔레그램': { tier: 3, weight: 0.5 },
-  '익명_추천주_채널':  { tier: 4, weight: 0.2 },
+  '삼성증권_리포트':    { tier: 1, weight: 1.0 },
+  '채권_아침시황':      { tier: 3, weight: 0.5 },
+  '주식_아침시황':      { tier: 3, weight: 0.5 },
+  '연준_발언_클리핑':   { tier: 3, weight: 0.5 },
+  '한국경제_텔레그램':  { tier: 3, weight: 0.5 },
+  '익명_추천주_채널':   { tier: 4, weight: 0.2 },
+  // ── 외부 뉴스 소스 ────────────────────────────────────────────────────────
+  'DART_전자공시':      { tier: 1, weight: 1.0 },
+  'CNN_Money':          { tier: 3, weight: 0.5 },
+  'CNN_Economy':        { tier: 3, weight: 0.5 },
 }
 
 export function getChannelMeta(channel: string) {

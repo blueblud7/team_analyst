@@ -9,54 +9,87 @@ export interface DbMessage {
   channel_id: string
   message_id: string
   posted_at: string
-  text: string | null
-  has_media: boolean
+  text: string
   channel_title: string
   channel_username: string | null
 }
 
-export interface DbSummary {
+export interface DbChannel {
   id: string
-  channel_id: string | null
-  kind: string
-  period_start: string
-  period_end: string
-  content: string
-  model: string | null
-  channel_title: string
+  title: string
+  username: string | null
+  type: string
+  message_count: number
 }
 
-export async function fetchRecentMessages(limit = 50): Promise<DbMessage[]> {
-  const rows = await getSql()`
-    SELECT m.channel_id, m.message_id, m.posted_at, m.text, m.has_media,
-           c.title AS channel_title, c.username AS channel_username
+export interface MessageFilter {
+  days?: number        // last N days (default 7)
+  limit?: number       // max rows (default 100)
+  channelIds?: string[]
+  minLength?: number   // min text length (default 30)
+}
+
+export async function fetchMessages(filter: MessageFilter = {}): Promise<DbMessage[]> {
+  const sql = getSql()
+  const { days = 7, limit = 100, channelIds, minLength = 30 } = filter
+
+  const since = new Date(Date.now() - days * 86400_000).toISOString()
+
+  if (channelIds && channelIds.length > 0) {
+    const rows = await sql`
+      SELECT m.channel_id::text, m.message_id::text, m.posted_at::text,
+             m.text, c.title AS channel_title, c.username AS channel_username
+      FROM messages m
+      JOIN channels c ON c.id = m.channel_id
+      WHERE m.text IS NOT NULL
+        AND length(m.text) >= ${minLength}
+        AND m.posted_at >= ${since}::timestamptz
+        AND m.channel_id = ANY(${channelIds.map(Number)}::bigint[])
+      ORDER BY m.posted_at DESC
+      LIMIT ${limit}
+    `
+    return rows as DbMessage[]
+  }
+
+  const rows = await sql`
+    SELECT m.channel_id::text, m.message_id::text, m.posted_at::text,
+           m.text, c.title AS channel_title, c.username AS channel_username
     FROM messages m
     JOIN channels c ON c.id = m.channel_id
-    WHERE m.text IS NOT NULL AND length(m.text) > 30
+    WHERE m.text IS NOT NULL
+      AND length(m.text) >= ${minLength}
+      AND m.posted_at >= ${since}::timestamptz
     ORDER BY m.posted_at DESC
     LIMIT ${limit}
   `
   return rows as DbMessage[]
 }
 
-export async function fetchRecentSummaries(limit = 30): Promise<DbSummary[]> {
-  const rows = await getSql()`
-    SELECT s.id, s.channel_id, s.kind, s.period_start, s.period_end,
-           s.content, s.model, COALESCE(c.title, '알 수 없음') AS channel_title
-    FROM summaries s
-    LEFT JOIN channels c ON c.id = s.channel_id
-    ORDER BY s.created_at DESC
-    LIMIT ${limit}
+export async function fetchChannels(): Promise<DbChannel[]> {
+  const sql = getSql()
+  const rows = await sql`
+    SELECT c.id::text, c.title, c.username, c.type,
+           COUNT(m.message_id)::int AS message_count
+    FROM channels c
+    LEFT JOIN messages m ON m.channel_id = c.id
+    WHERE c.selected = true
+    GROUP BY c.id, c.title, c.username, c.type
+    ORDER BY message_count DESC
   `
-  return rows as DbSummary[]
+  return rows as DbChannel[]
 }
 
-export async function getChannelCount(): Promise<number> {
-  const rows = await getSql()`SELECT COUNT(*) AS cnt FROM channels WHERE selected = true`
-  return Number((rows[0] as { cnt: string }).cnt)
-}
-
-export async function getMessageCount(): Promise<number> {
-  const rows = await getSql()`SELECT COUNT(*) AS cnt FROM messages`
-  return Number((rows[0] as { cnt: string }).cnt)
+export async function getStats(): Promise<{ channels: number; messages: number; connected: boolean }> {
+  try {
+    const sql = getSql()
+    const rows = await sql`
+      SELECT
+        (SELECT COUNT(*) FROM channels WHERE selected = true)::int AS channels,
+        (SELECT COUNT(*) FROM messages)::int AS messages
+    `
+    const r = rows[0] as { channels: number; messages: number }
+    return { ...r, connected: true }
+  } catch {
+    return { channels: 0, messages: 0, connected: false }
+  }
 }

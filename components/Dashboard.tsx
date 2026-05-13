@@ -635,23 +635,43 @@ const SOURCE_TYPES: Record<string, string> = {
   sample: '샘플',
 }
 
+interface DbChannel { id: string; title: string; username: string | null; type: string; message_count: number }
+
 function NewsPanel({ onNewsLoaded }: { onNewsLoaded: (items: NewsItem[]) => void }) {
   const [loading, setLoading] = useState(false)
   const [items, setItems] = useState<NewsItem[]>([])
   const [selected, setSelected] = useState<Set<number>>(new Set())
   const [dbStatus, setDbStatus] = useState<{ channels: number; messages: number; connected: boolean } | null>(null)
+  const [dbChannels, setDbChannels] = useState<DbChannel[]>([])
   const [error, setError] = useState<string | null>(null)
-  const [sources, setSources] = useState({ dart: true, cnn: true, neon: true })
+  const [sources, setSources] = useState({ neon: true, dart: true, cnn: false })
+  const [days, setDays] = useState(3)
+  const [limit, setLimit] = useState(100)
+  const [selectedChannels, setSelectedChannels] = useState<Set<string>>(new Set())
+  const [showChannelFilter, setShowChannelFilter] = useState(false)
+
+  // auto-check DB status on mount
+  useEffect(() => {
+    fetch('/api/news?sources=neon&limit=0&days=1')
+      .then(r => r.json())
+      .then(d => {
+        setDbStatus(d.db)
+        if (d.channels?.length) setDbChannels(d.channels)
+      })
+      .catch(() => {})
+  }, [])
 
   async function fetchNews() {
     setLoading(true)
     setError(null)
     try {
       const active = Object.entries(sources).filter(([, v]) => v).map(([k]) => k).join(',')
-      const res = await fetch(`/api/news?sources=${active}`)
+      const channelParam = selectedChannels.size > 0 ? `&channels=${[...selectedChannels].join(',')}` : ''
+      const res = await fetch(`/api/news?sources=${active}&days=${days}&limit=${limit}${channelParam}`)
       const data = await res.json()
       setItems(data.items ?? [])
       setDbStatus(data.db)
+      if (data.channels?.length) setDbChannels(data.channels)
       setSelected(new Set((data.items ?? []).map((_: unknown, i: number) => i)))
       if (data.errors?.length) setError(data.errors.join(' | '))
     } catch (e) {
@@ -662,105 +682,138 @@ function NewsPanel({ onNewsLoaded }: { onNewsLoaded: (items: NewsItem[]) => void
   }
 
   function toggleItem(i: number) {
-    setSelected(prev => {
-      const next = new Set(prev)
-      next.has(i) ? next.delete(i) : next.add(i)
-      return next
-    })
+    setSelected(prev => { const n = new Set(prev); n.has(i) ? n.delete(i) : n.add(i); return n })
+  }
+  function toggleChannel(id: string) {
+    setSelectedChannels(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
   }
 
   function sendToAnalysis() {
-    const picked = items.filter((_, i) => selected.has(i))
-    onNewsLoaded(picked)
+    onNewsLoaded(items.filter((_, i) => selected.has(i)))
+  }
+
+  const tierColors: Record<number, string> = {
+    1: 'bg-indigo-100 text-indigo-700',
+    2: 'bg-blue-100 text-blue-700',
+    3: 'bg-gray-100 text-gray-600',
+    4: 'bg-yellow-100 text-yellow-700',
   }
 
   return (
     <div className="space-y-5">
-      {/* DB Status */}
-      <div className="bg-white rounded-xl border p-5">
-        <h2 className="font-semibold text-gray-800 mb-3">데이터 소스</h2>
-        <div className="flex flex-wrap gap-4 text-sm mb-4">
-          <div className={`flex items-center gap-2 px-3 py-2 rounded-lg border ${dbStatus?.connected ? 'border-green-300 bg-green-50' : 'border-gray-200 bg-gray-50'}`}>
-            <span className={`w-2 h-2 rounded-full ${dbStatus?.connected ? 'bg-green-500' : 'bg-gray-300'}`} />
-            <span className="font-medium">Neon DB</span>
-            {dbStatus?.connected && (
-              <span className="text-gray-500">채널 {dbStatus.channels}개 · 메시지 {dbStatus.messages}건</span>
-            )}
-            {!dbStatus?.connected && <span className="text-gray-400">미연결</span>}
-          </div>
-          <div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-blue-200 bg-blue-50">
-            <span className="w-2 h-2 rounded-full bg-blue-500" />
-            <span className="font-medium">DART</span>
-            <span className="text-gray-500">전자공시</span>
-          </div>
-          <div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-orange-200 bg-orange-50">
-            <span className="w-2 h-2 rounded-full bg-orange-500" />
-            <span className="font-medium">CNN RSS</span>
-            <span className="text-gray-500">금융/경제</span>
-          </div>
-        </div>
+      {/* Controls */}
+      <div className="bg-white rounded-xl border p-5 space-y-4">
+        <h2 className="font-semibold text-gray-800">데이터 수집 설정</h2>
 
-        <div className="flex gap-3 items-center mb-1">
-          {(Object.keys(sources) as (keyof typeof sources)[]).map(k => (
-            <label key={k} className="flex items-center gap-1.5 text-sm cursor-pointer">
-              <input type="checkbox" checked={sources[k]} onChange={e => setSources(prev => ({ ...prev, [k]: e.target.checked }))} />
-              {k.toUpperCase()}
+        {/* Source toggles */}
+        <div className="flex flex-wrap gap-3">
+          {(['neon', 'dart', 'cnn'] as const).map(k => (
+            <label key={k} className={`flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer text-sm transition ${sources[k] ? 'border-blue-400 bg-blue-50' : 'border-gray-200'}`}>
+              <input type="checkbox" checked={sources[k]} onChange={e => setSources(p => ({ ...p, [k]: e.target.checked }))} />
+              <span className="font-medium">{k === 'neon' ? '텔레그램 DB' : k === 'dart' ? 'DART 공시' : 'CNN RSS'}</span>
+              {k === 'neon' && dbStatus?.connected && (
+                <span className="text-xs text-gray-500">{dbStatus.messages.toLocaleString()}건</span>
+              )}
             </label>
           ))}
         </div>
 
+        {/* Neon filters */}
+        {sources.neon && (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">기간</label>
+              <select value={days} onChange={e => setDays(Number(e.target.value))} className="w-full border rounded px-2 py-1.5 text-sm">
+                <option value={1}>최근 1일</option>
+                <option value={3}>최근 3일</option>
+                <option value={7}>최근 7일</option>
+                <option value={14}>최근 14일</option>
+                <option value={30}>최근 30일</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">최대 건수</label>
+              <select value={limit} onChange={e => setLimit(Number(e.target.value))} className="w-full border rounded px-2 py-1.5 text-sm">
+                <option value={50}>50건</option>
+                <option value={100}>100건</option>
+                <option value={200}>200건</option>
+                <option value={500}>500건</option>
+              </select>
+            </div>
+            <div className="sm:col-span-2 flex items-end">
+              <button
+                onClick={() => setShowChannelFilter(p => !p)}
+                className="text-xs text-blue-600 hover:underline"
+              >
+                채널 필터 {selectedChannels.size > 0 ? `(${selectedChannels.size}개 선택)` : '(전체)'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Channel filter */}
+        {showChannelFilter && dbChannels.length > 0 && (
+          <div className="border rounded-lg p-3 max-h-56 overflow-y-auto space-y-1">
+            <div className="flex gap-2 mb-2">
+              <button onClick={() => setSelectedChannels(new Set(dbChannels.map(c => c.id)))} className="text-xs text-blue-600 hover:underline">전체선택</button>
+              <button onClick={() => setSelectedChannels(new Set())} className="text-xs text-gray-500 hover:underline">전체해제</button>
+            </div>
+            {dbChannels.filter(c => c.message_count > 0).map(ch => (
+              <label key={ch.id} className="flex items-center gap-2 text-xs cursor-pointer hover:bg-gray-50 px-1 py-0.5 rounded">
+                <input type="checkbox" checked={selectedChannels.has(ch.id)} onChange={() => toggleChannel(ch.id)} />
+                <span className="flex-1 truncate">{ch.title}</span>
+                <span className="text-gray-400 shrink-0">{ch.message_count.toLocaleString()}건</span>
+              </label>
+            ))}
+          </div>
+        )}
+
         <button
           onClick={fetchNews}
           disabled={loading}
-          className="mt-3 px-5 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 transition"
+          className="px-5 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 transition"
         >
-          {loading ? '수집 중...' : '뉴스 가져오기'}
+          {loading ? '수집 중...' : '데이터 가져오기'}
         </button>
-        {error && <p className="mt-2 text-xs text-red-500">{error}</p>}
+        {error && <p className="text-xs text-red-500 mt-1">{error}</p>}
       </div>
 
       {/* Items list */}
       {items.length > 0 && (
         <div className="bg-white rounded-xl border p-5">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="font-semibold text-gray-800">수집된 항목 ({items.length}건)</h3>
-            <div className="flex gap-2">
+          <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+            <h3 className="font-semibold text-gray-800">수집된 항목 <span className="text-blue-600">{items.length}건</span></h3>
+            <div className="flex gap-2 items-center">
               <button onClick={() => setSelected(new Set(items.map((_, i) => i)))} className="text-xs text-blue-600 hover:underline">전체선택</button>
               <button onClick={() => setSelected(new Set())} className="text-xs text-gray-500 hover:underline">전체해제</button>
               <button
                 onClick={sendToAnalysis}
                 disabled={selected.size === 0}
-                className="px-3 py-1 bg-green-600 text-white text-xs rounded-lg hover:bg-green-700 disabled:opacity-50 transition"
+                className="px-3 py-1.5 bg-green-600 text-white text-xs font-medium rounded-lg hover:bg-green-700 disabled:opacity-50 transition"
               >
-                선택 {selected.size}건 → 실험 실행에 전달
+                선택 {selected.size}건 → 실험 실행 전달
               </button>
             </div>
           </div>
-          <div className="space-y-2 max-h-[480px] overflow-y-auto pr-1">
+          <div className="space-y-1.5 max-h-[560px] overflow-y-auto pr-1">
             {items.map((item, i) => (
-              <label key={i} className={`flex gap-3 p-3 rounded-lg border cursor-pointer transition ${selected.has(i) ? 'border-blue-300 bg-blue-50' : 'border-gray-100 hover:border-gray-300'}`}>
-                <input
-                  type="checkbox"
-                  checked={selected.has(i)}
-                  onChange={() => toggleItem(i)}
-                  className="mt-0.5 shrink-0"
-                />
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${
+              <label key={i} className={`flex gap-3 p-3 rounded-lg border cursor-pointer transition ${selected.has(i) ? 'border-blue-300 bg-blue-50' : 'border-gray-100 hover:border-gray-200'}`}>
+                <input type="checkbox" checked={selected.has(i)} onChange={() => toggleItem(i)} className="mt-0.5 shrink-0" />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-1.5 mb-0.5 flex-wrap">
+                    <span className={`text-xs px-1.5 py-0.5 rounded font-medium shrink-0 ${
                       item.source_type === 'dart' ? 'bg-blue-100 text-blue-700' :
                       item.source_type === 'cnn' ? 'bg-orange-100 text-orange-700' :
-                      item.source_type === 'neon_message' ? 'bg-purple-100 text-purple-700' :
-                      'bg-gray-100 text-gray-600'
+                      'bg-purple-100 text-purple-700'
                     }`}>
                       {SOURCE_TYPES[item.source_type] ?? item.source_type}
                     </span>
-                    <span className="text-xs text-gray-500 truncate">{item.source_channel}</span>
+                    <span className="text-xs text-gray-600 font-medium truncate max-w-[200px]">{item.source_channel}</span>
                     <span className="text-xs text-gray-400 ml-auto shrink-0">
-                      {new Date(item.posted_at).toLocaleDateString('ko-KR')}
+                      {new Date(item.posted_at).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
                     </span>
                   </div>
-                  <p className="text-sm text-gray-700 line-clamp-2">{item.raw_summary.slice(0, 200)}</p>
+                  <p className="text-xs text-gray-700 line-clamp-2 leading-relaxed">{item.raw_summary.slice(0, 180)}</p>
                 </div>
               </label>
             ))}
