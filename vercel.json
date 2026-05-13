@@ -1,8 +1,12 @@
 {
   "framework": "nextjs",
+  "crons": [
+    { "path": "/api/cron/briefing?slot=pre",  "schedule": "0 23 * * *" },
+    { "path": "/api/cron/briefing?slot=mid",  "schedule": "0 3 * * *"  },
+    { "path": "/api/cron/briefing?slot=post", "schedule": "0 7 * * *"  }
+  ],
   "functions": {
-    "app/api/compare/route.ts": {
-      "maxDuration": 300
-    }
+    "app/api/compare/route.ts":        { "maxDuration": 300 },
+    "app/api/cron/briefing/route.ts":  { "maxDuration": 120 }
   }
 }

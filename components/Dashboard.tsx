@@ -858,6 +858,94 @@ function renderMarkdown(text: string) {
   })
 }
 
+const AUTO_SLOTS = [
+  { key: 'pre',  label: '장전', time: '08:00', kstHour: 8,  desc: '전일 16시 → 08시' },
+  { key: 'mid',  label: '장중', time: '12:00', kstHour: 12, desc: '08시 → 12시' },
+  { key: 'post', label: '장후', time: '16:00', kstHour: 16, desc: '12시 → 16시' },
+]
+
+function TodayBriefingStatus() {
+  const [status, setStatus] = useState<Record<string, string | null>>({ '장전': null, '장중': null, '장후': null })
+  const [generating, setGenerating] = useState<string | null>(null)
+  const [genError, setGenError] = useState<string | null>(null)
+
+  const kstNowHour = new Date(Date.now() + 9 * 3600_000).getHours()
+  const kstTodayStr = new Date(Date.now() + 9 * 3600_000).toISOString().slice(0, 10)
+
+  useEffect(() => {
+    fetch('/api/briefings')
+      .then(r => r.json())
+      .then(({ briefings = [] }) => {
+        const s: Record<string, string | null> = { '장전': null, '장중': null, '장후': null }
+        briefings.forEach((b: { slot: string; created_at: string }) => {
+          const bKST = new Date(new Date(b.created_at).getTime() + 9 * 3600_000).toISOString().slice(0, 10)
+          if (bKST === kstTodayStr) s[b.slot] = b.created_at
+        })
+        setStatus(s)
+      })
+      .catch(() => {})
+  }, [kstTodayStr])
+
+  async function generate(slotKey: string, slotLabel: string) {
+    setGenerating(slotLabel)
+    setGenError(null)
+    try {
+      const res = await fetch(`/api/cron/briefing?slot=${slotKey}`)
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? res.statusText)
+      setStatus(prev => ({ ...prev, [slotLabel]: new Date().toISOString() }))
+    } catch (e) {
+      setGenError(String(e))
+    } finally {
+      setGenerating(null)
+    }
+  }
+
+  return (
+    <div className="bg-white rounded-xl border p-5">
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="font-semibold text-gray-800">오늘 자동 브리핑 현황</h3>
+        <span className="text-xs text-gray-400">KST 기준 · {kstTodayStr}</span>
+      </div>
+      <div className="grid grid-cols-3 gap-3">
+        {AUTO_SLOTS.map(slot => {
+          const done = status[slot.label]
+          const slotPassed = kstNowHour >= slot.kstHour
+
+          return (
+            <div key={slot.key} className={`rounded-xl border p-4 ${done ? 'border-green-200 bg-green-50' : 'border-gray-200'}`}>
+              <div className="text-sm font-bold text-gray-800">{slot.label}</div>
+              <div className="text-xs text-gray-400 mt-0.5">{slot.time} · {slot.desc}</div>
+              {done ? (
+                <div className="text-xs text-green-700 mt-3 font-medium">
+                  ✓ {new Date(new Date(done).getTime() + 9*3600_000)
+                    .toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })} 게시
+                </div>
+              ) : (
+                <button
+                  onClick={() => generate(slot.key, slot.label)}
+                  disabled={!!generating || !slotPassed}
+                  className={`mt-3 w-full text-xs py-1.5 rounded-lg border font-medium transition ${
+                    !slotPassed
+                      ? 'border-gray-200 text-gray-300 cursor-default'
+                      : generating === slot.label
+                      ? 'border-blue-300 text-blue-500 bg-blue-50'
+                      : 'border-gray-300 text-gray-700 hover:bg-gray-50'
+                  }`}
+                >
+                  {!slotPassed ? `${slot.time} 자동 예정` : generating === slot.label ? '생성 중...' : '지금 생성'}
+                </button>
+              )}
+            </div>
+          )
+        })}
+      </div>
+      {genError && <p className="text-xs text-red-500 mt-2">{genError}</p>}
+      <p className="text-xs text-gray-400 mt-3">각 슬롯은 해당 시간대 뉴스만 수집해 자동 브리핑을 생성합니다. 매일 Vercel Cron으로 자동 실행.</p>
+    </div>
+  )
+}
+
 function BriefingPanel({ newsItems }: { newsItems: NewsItem[] }) {
   const [loading, setLoading] = useState(false)
   const [report, setReport] = useState('')
@@ -965,6 +1053,9 @@ function BriefingPanel({ newsItems }: { newsItems: NewsItem[] }) {
 
   return (
     <div className="space-y-5">
+      {/* Today auto-briefing status */}
+      <TodayBriefingStatus />
+
       {/* History */}
       {history.length > 0 && (
         <div className="bg-white rounded-xl border p-4">

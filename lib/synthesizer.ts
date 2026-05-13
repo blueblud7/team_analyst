@@ -1,4 +1,4 @@
-import { streamText } from 'ai'
+import { streamText, generateText } from 'ai'
 import { getModel } from './providers'
 import type { ProviderName, Tier } from './models'
 
@@ -9,7 +9,7 @@ export interface BriefingInput {
   posted_at: string
 }
 
-const YOONSEN_SYSTEM = `당신은 알파리서치(AlphaResearch)의 AI 리서치 센터장입니다.
+export const ALPHA_SYSTEM = `당신은 알파리서치(AlphaResearch)의 AI 리서치 센터장입니다.
 국내 최고 수준의 AI 애널리스트로, 매일 아침 CEO와 포트폴리오 매니저에게 시장 브리핑을 제공합니다.
 
 ## 역할
@@ -22,16 +22,17 @@ const YOONSEN_SYSTEM = `당신은 알파리서치(AlphaResearch)의 AI 리서치
 - 권위 있고 간결하게. 불필요한 미사여구 없음.
 - 한국어. 영문 티커/고유명사는 그대로 사용.`
 
-const BRIEFING_PROMPT = (inputs: BriefingInput[], date: string) => {
+export const BRIEFING_PROMPT = (inputs: BriefingInput[], date: string, slot?: string) => {
   const newsBlock = inputs.map((item, i) => {
     const time = new Date(item.posted_at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })
     return `[${i + 1}] ${item.source_channel} ${time}\n${item.raw_summary.slice(0, 400)}`
   }).join('\n\n---\n\n')
 
-  return `오늘(${date}) 수집된 주요 뉴스 ${inputs.length}건입니다. 종합 브리핑을 작성하세요.
+  const slotLabel = slot ? ` [${slot}]` : ''
+  return `오늘(${date})${slotLabel} 수집된 주요 뉴스 ${inputs.length}건입니다. 종합 브리핑을 작성하세요.
 
 ## 출력 형식 (마크다운)
-# 알파리서치 브리핑 — ${date}
+# 알파리서치 브리핑${slotLabel} — ${date}
 
 ## 핵심 메시지
 (3줄 이내. 오늘 가장 중요한 흐름)
@@ -59,7 +60,22 @@ export function streamBriefing(inputs: BriefingInput[], provider: ProviderName =
   const date = new Date().toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' })
   return streamText({
     model: getModel(provider, tier),
-    system: YOONSEN_SYSTEM,
+    system: ALPHA_SYSTEM,
     prompt: BRIEFING_PROMPT(inputs, date),
   })
+}
+
+export async function generateBriefingText(
+  inputs: BriefingInput[],
+  slot: string,
+  provider: ProviderName = 'openai',
+  tier: Tier = 'high',
+): Promise<string> {
+  const date = new Date().toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' })
+  const { text } = await generateText({
+    model: getModel(provider, tier),
+    system: ALPHA_SYSTEM,
+    prompt: BRIEFING_PROMPT(inputs, date, slot),
+  })
+  return text
 }
