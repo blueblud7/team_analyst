@@ -869,8 +869,8 @@ function TodayBriefingStatus() {
   const [generating, setGenerating] = useState<string | null>(null)
   const [genError, setGenError] = useState<string | null>(null)
 
-  const kstNowHour = new Date(Date.now() + 9 * 3600_000).getHours()
-  const kstTodayStr = new Date(Date.now() + 9 * 3600_000).toISOString().slice(0, 10)
+  const kstNowHour = parseInt(new Date().toLocaleString('en-US', { timeZone: 'Asia/Seoul', hour: 'numeric', hour12: false })) % 24
+  const kstTodayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Seoul' })
 
   useEffect(() => {
     fetch('/api/briefings')
