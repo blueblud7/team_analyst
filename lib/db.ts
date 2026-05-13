@@ -27,13 +27,17 @@ export interface MessageFilter {
   limit?: number       // max rows (default 100)
   channelIds?: string[]
   minLength?: number   // min text length (default 30)
+  from?: string        // ISO datetime lower bound (inclusive)
+  to?: string          // ISO datetime upper bound (inclusive)
 }
 
 export async function fetchMessages(filter: MessageFilter = {}): Promise<DbMessage[]> {
   const sql = getSql()
-  const { days = 7, limit = 100, channelIds, minLength = 30 } = filter
+  const { days = 7, limit = 100, channelIds, minLength = 30, from, to } = filter
 
-  const since = new Date(Date.now() - days * 86400_000).toISOString()
+  // Prefer explicit from/to over days-based window
+  const since = from ?? new Date(Date.now() - days * 86400_000).toISOString()
+  const until = to ?? new Date().toISOString()
 
   if (channelIds && channelIds.length > 0) {
     const rows = await sql`
@@ -44,6 +48,7 @@ export async function fetchMessages(filter: MessageFilter = {}): Promise<DbMessa
       WHERE m.text IS NOT NULL
         AND length(m.text) >= ${minLength}
         AND m.posted_at >= ${since}::timestamptz
+        AND m.posted_at <= ${until}::timestamptz
         AND m.channel_id = ANY(${channelIds.map(Number)}::bigint[])
       ORDER BY m.posted_at DESC
       LIMIT ${limit}
@@ -59,6 +64,7 @@ export async function fetchMessages(filter: MessageFilter = {}): Promise<DbMessa
     WHERE m.text IS NOT NULL
       AND length(m.text) >= ${minLength}
       AND m.posted_at >= ${since}::timestamptz
+      AND m.posted_at <= ${until}::timestamptz
     ORDER BY m.posted_at DESC
     LIMIT ${limit}
   `
