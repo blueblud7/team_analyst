@@ -4,6 +4,7 @@ import { fetchDartDisclosures } from '@/lib/news/dart'
 import { fetchCnnRss, fetchCnnEconomyRss } from '@/lib/news/rss'
 import { generateBriefingText } from '@/lib/synthesizer'
 import type { BriefingInput } from '@/lib/synthesizer'
+import { fetchMarketIndicators, formatMarketForPrompt } from '@/lib/market'
 
 export const maxDuration = 120
 
@@ -126,7 +127,14 @@ export async function GET(req: NextRequest) {
 
   items.sort((a, b) => new Date(a.posted_at).getTime() - new Date(b.posted_at).getTime())
 
-  const text = await generateBriefingText(items, label)
+  // Fetch market indicators (non-blocking — proceed even if it fails)
+  let marketSnapshot = ''
+  try {
+    const indicators = await fetchMarketIndicators()
+    marketSnapshot = formatMarketForPrompt(indicators)
+  } catch {}
+
+  const text = await generateBriefingText(items, label, marketSnapshot)
   await saveBriefing(label, text, 'openai', items.length)
 
   return NextResponse.json({

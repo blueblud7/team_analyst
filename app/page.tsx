@@ -12,6 +12,69 @@ interface BriefingRecord {
   created_at: string
 }
 
+interface MarketIndicator {
+  symbol: string
+  name: string
+  price: number
+  changePct: number
+  currency: string
+  decimals: number
+}
+
+function MarketStrip() {
+  const [indicators, setIndicators] = useState<MarketIndicator[]>([])
+  const [updatedAt, setUpdatedAt] = useState<string | null>(null)
+
+  useEffect(() => {
+    function load() {
+      fetch('/api/market')
+        .then(r => r.json())
+        .then(({ indicators = [], updatedAt }) => {
+          setIndicators(indicators)
+          setUpdatedAt(updatedAt)
+        })
+        .catch(() => {})
+    }
+    load()
+    const id = setInterval(load, 60_000) // refresh every 60s
+    return () => clearInterval(id)
+  }, [])
+
+  if (!indicators.length) return null
+
+  return (
+    <div className="bg-gray-900 text-white">
+      <div className="max-w-3xl mx-auto px-6 py-2">
+        <div className="flex items-center gap-1 overflow-x-auto no-scrollbar">
+          <span className="text-xs text-gray-500 shrink-0 mr-2">실시간</span>
+          {indicators.map((ind, i) => {
+            const up = ind.changePct >= 0
+            return (
+              <div key={ind.symbol} className="flex items-center gap-3 shrink-0">
+                {i > 0 && <span className="text-gray-700 text-xs">|</span>}
+                <div className="flex items-baseline gap-1.5">
+                  <span className="text-xs text-gray-400">{ind.name}</span>
+                  <span className="text-sm font-semibold tabular-nums">
+                    {ind.price.toFixed(ind.decimals)}
+                  </span>
+                  <span className={`text-xs font-medium tabular-nums ${up ? 'text-red-400' : 'text-blue-400'}`}>
+                    {up ? '▲' : '▼'}{Math.abs(ind.changePct).toFixed(2)}%
+                  </span>
+                </div>
+              </div>
+            )
+          })}
+          {updatedAt && (
+            <span className="ml-auto text-xs text-gray-600 shrink-0 pl-4">
+              {new Date(updatedAt).toLocaleTimeString('ko-KR', { timeZone: 'Asia/Seoul', hour: '2-digit', minute: '2-digit' })}
+            </span>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 const SLOTS = [
   { key: '장전', en: 'Pre-Market',  accent: 'border-blue-500',   badge: 'bg-blue-50 text-blue-700'   },
   { key: '장중', en: 'Intraday',    accent: 'border-emerald-500', badge: 'bg-emerald-50 text-emerald-700' },
@@ -120,6 +183,9 @@ export default function PublicPage() {
           </div>
         </div>
       </header>
+
+      {/* Market indicators strip */}
+      <MarketStrip />
 
       {/* Date navigation */}
       <div className="bg-white border-b">
