@@ -51,6 +51,98 @@ export interface ScoreRow {
   created_at: string
 }
 
+// ── Macro Critic Types ────────────────────────────────────────────────────────
+
+export type MarketRegime = 'risk_on' | 'risk_off' | 'neutral' | 'rotational'
+export type MacroAlignment = 'tailwind' | 'headwind' | 'neutral'
+export type WatchPriority = 'high' | 'medium'
+export type SignalType = 'breakout' | 'reversal' | 'confirmation' | 'risk'
+
+export interface MacroSnapshot {
+  usd_krw?: number
+  us_10y?: number
+  dxy?: number
+  wti?: number
+  vix?: number
+  kospi_change_pct?: number
+  nasdaq_change_pct?: number
+  sox_change_pct?: number
+  [key: string]: number | undefined
+}
+
+export interface SectorMetrics {
+  wsi: number
+  velocity: number
+  divergence: number
+  event_count: number
+  top_tickers?: string[]
+  alerts?: string[]
+}
+
+export interface MacroCritiqueInput {
+  week_start: string
+  macro: MacroSnapshot
+  sectors: Record<string, SectorMetrics>
+}
+
+export interface WatchItem {
+  target: string
+  target_type: 'ticker' | 'sector'
+  reason: string
+  priority: WatchPriority
+  signal_type: SignalType
+}
+
+export type ReviewHorizon = '1d' | '1w' | '1m'
+
+export interface CritiqueReviewResult {
+  overall_accuracy: number
+  regime_score: number
+  leading_sector_score: number
+  watchlist_score: number
+  what_we_got_right: string[]
+  what_we_got_wrong: string[]
+  missed_signals: string[]
+  learning: string
+  confidence_in_review: number
+}
+
+export interface CritiqueRecord {
+  id: number
+  week_start: string
+  result: MacroCritiqueResult
+  created_at: string
+  reviews: ReviewRecord[]
+}
+
+export interface ReviewRecord {
+  id: number
+  critique_id: number
+  horizon: ReviewHorizon
+  review_date: string
+  actual_snapshot: MacroSnapshot
+  scores: CritiqueReviewResult
+  reviewed_at: string
+}
+
+export interface MacroCritiqueResult {
+  week_start: string
+  market_regime: MarketRegime
+  regime_rationale: string
+  leading_sectors: Array<{ sector: string; reason: string }>
+  lagging_sectors: Array<{ sector: string; reason: string }>
+  rotation_signal: string | null
+  macro_alignment: Record<string, MacroAlignment>
+  watch_list: WatchItem[]
+  contrarian_view: string | null
+  key_insight: string
+  next_week_agenda: string[]
+  confidence: number
+  provider: string
+  latency_ms: number | null
+  cost_usd: number | null
+}
+
 export function makeEvent(overrides: Partial<TaggedEvent> = {}): TaggedEvent {
   return {
     id: crypto.randomUUID(),

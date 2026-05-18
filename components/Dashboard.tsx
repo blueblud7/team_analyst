@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import type { TaggedEvent, ProviderName, CompareResult, ScoreRow } from '@/lib/models'
+import { useState, useEffect, useCallback } from 'react'
+import type { TaggedEvent, ProviderName, CompareResult, ScoreRow, MacroCritiqueResult, CritiqueReviewResult, ReviewHorizon } from '@/lib/models'
 import { PROVIDER_CONFIG } from '@/lib/config'
 import { SAMPLES } from '@/lib/samples'
 import type { NewsItem } from '@/app/api/news/route'
@@ -1207,15 +1207,272 @@ function BriefingPanel({ newsItems: propNews }: { newsItems: NewsItem[] }) {
   )
 }
 
+// ── WB Strategy Panel ─────────────────────────────────────────────────────────
+
+interface CritiqueRow {
+  id: number
+  week_start: string
+  result: MacroCritiqueResult
+  created_at: string
+  reviews: Array<{ id: number; horizon: string; scores: CritiqueReviewResult; reviewed_at: string }>
+}
+
+const REGIME_COLORS: Record<string, string> = {
+  risk_on: 'bg-emerald-100 text-emerald-700',
+  risk_off: 'bg-red-100 text-red-700',
+  neutral: 'bg-gray-100 text-gray-600',
+  rotational: 'bg-amber-100 text-amber-700',
+}
+const HORIZON_LABELS: Record<ReviewHorizon, string> = { '1d': 'D+1', '1w': 'D+7', '1m': 'D+30' }
+const HORIZONS: ReviewHorizon[] = ['1d', '1w', '1m']
+
+function AccuracyBadge({ score }: { score: number }) {
+  const pct = Math.round(score * 100)
+  const color = pct >= 70 ? 'text-emerald-600' : pct >= 50 ? 'text-amber-600' : 'text-red-500'
+  return <span className={`font-semibold tabular-nums ${color}`}>{pct}%</span>
+}
+
+function WbStrategyPanel() {
+  const [critiques, setCritiques] = useState<CritiqueRow[]>([])
+  const [loadingList, setLoadingList] = useState(false)
+  const [running, setRunning] = useState(false)
+  const [reviewing, setReviewing] = useState<string | null>(null)  // `${id}-${horizon}`
+  const [expandedId, setExpandedId] = useState<number | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  const loadCritiques = useCallback(async () => {
+    setLoadingList(true)
+    try {
+      const res = await fetch('/api/macro/critique')
+      const { critiques: rows } = await res.json()
+      setCritiques(rows ?? [])
+    } catch { /* noop */ }
+    finally { setLoadingList(false) }
+  }, [])
+
+  useEffect(() => { loadCritiques() }, [loadCritiques])
+
+  async function runAnalysis() {
+    setRunning(true)
+    setError(null)
+    try {
+      const res = await fetch('/api/macro/critique', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ provider: 'openai', tier: 'high', save: true }),
+      })
+      const data = await res.json()
+      if (data.error) throw new Error(data.error)
+      await loadCritiques()
+      setExpandedId(data.saved_id ?? null)
+    } catch (e) { setError(String(e)) }
+    finally { setRunning(false) }
+  }
+
+  async function runReview(critiqueId: number, horizon: ReviewHorizon) {
+    const key = `${critiqueId}-${horizon}`
+    setReviewing(key)
+    setError(null)
+    try {
+      const res = await fetch('/api/macro/review', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ critique_id: critiqueId, horizon, provider: 'openai' }),
+      })
+      const data = await res.json()
+      if (data.error) throw new Error(data.error)
+      await loadCritiques()
+    } catch (e) { setError(String(e)) }
+    finally { setReviewing(null) }
+  }
+
+  return (
+    <div className="space-y-5">
+      {/* Run button */}
+      <div className="bg-white border rounded-xl p-5 flex items-center justify-between">
+        <div>
+          <p className="font-medium text-gray-800">WB 매크로 분석 실행</p>
+          <p className="text-xs text-gray-400 mt-0.5">실행 후 D+1 / D+7 / D+30에 자동 리뷰 가능</p>
+        </div>
+        <button
+          onClick={runAnalysis}
+          disabled={running}
+          className="px-4 py-2 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-700 transition disabled:opacity-50"
+        >
+          {running ? '분석 중...' : '지금 실행'}
+        </button>
+      </div>
+
+      {error && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-700">{error}</div>
+      )}
+
+      {/* History */}
+      <div className="space-y-3">
+        <p className="text-xs font-bold text-gray-400 tracking-widest uppercase">분석 히스토리</p>
+
+        {loadingList && <p className="text-sm text-gray-400 py-4 text-center">불러오는 중...</p>}
+
+        {!loadingList && critiques.length === 0 && (
+          <p className="text-sm text-gray-400 bg-white border rounded-xl p-6 text-center">
+            아직 분석 기록이 없습니다. 위 버튼으로 첫 분석을 실행하세요.
+          </p>
+        )}
+
+        {critiques.map(row => {
+          const regimeCls = REGIME_COLORS[row.result.market_regime] ?? 'bg-gray-100 text-gray-600'
+          const isExpanded = expandedId === row.id
+          const reviewedHorizons = new Set(row.reviews.map(r => r.horizon))
+
+          return (
+            <div key={row.id} className="bg-white border rounded-xl overflow-hidden">
+              {/* Header row */}
+              <div
+                className="px-5 py-4 flex items-center gap-4 cursor-pointer hover:bg-gray-50 transition"
+                onClick={() => setExpandedId(isExpanded ? null : row.id)}
+              >
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-sm font-semibold text-gray-800">{row.week_start} 주</span>
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${regimeCls}`}>
+                      {row.result.market_regime}
+                    </span>
+                    <span className="text-xs text-gray-400">
+                      신뢰도 {Math.round(row.result.confidence * 100)}%
+                    </span>
+                  </div>
+                  <p className="text-xs text-gray-500 mt-1 truncate">{row.result.key_insight}</p>
+                </div>
+
+                {/* Review buttons */}
+                <div className="flex items-center gap-1.5 shrink-0">
+                  {HORIZONS.map(h => {
+                    const done = reviewedHorizons.has(h)
+                    const review = row.reviews.find(r => r.horizon === h)
+                    const key = `${row.id}-${h}`
+                    const isReviewing = reviewing === key
+                    return (
+                      <button
+                        key={h}
+                        onClick={e => { e.stopPropagation(); if (!done) runReview(row.id, h) }}
+                        disabled={done || !!reviewing}
+                        title={done ? `${HORIZON_LABELS[h]} 리뷰 완료` : `${HORIZON_LABELS[h]} 리뷰 실행`}
+                        className={`px-2.5 py-1 text-xs rounded-md border font-medium transition ${
+                          done
+                            ? 'bg-emerald-50 text-emerald-600 border-emerald-200 cursor-default'
+                            : isReviewing
+                              ? 'bg-gray-100 text-gray-400 border-gray-200'
+                              : 'text-gray-500 border-gray-300 hover:border-gray-500 hover:bg-gray-50'
+                        }`}
+                      >
+                        {isReviewing ? '...' : done
+                          ? `${HORIZON_LABELS[h]} ✓ ${review ? Math.round(review.scores.overall_accuracy * 100) + '%' : ''}`
+                          : HORIZON_LABELS[h]
+                        }
+                      </button>
+                    )
+                  })}
+                  <span className="text-gray-400 text-sm ml-1">{isExpanded ? '▲' : '▼'}</span>
+                </div>
+              </div>
+
+              {/* Expanded detail */}
+              {isExpanded && (
+                <div className="border-t px-5 py-4 space-y-4 bg-gray-50">
+                  {/* Prediction summary */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <p className="text-xs font-semibold text-gray-400 mb-1.5">주도 섹터</p>
+                      <div className="flex flex-wrap gap-1">
+                        {row.result.leading_sectors.map((s, i) => (
+                          <span key={i} className="text-xs bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full">{s.sector}</span>
+                        ))}
+                        {row.result.leading_sectors.length === 0 && <span className="text-xs text-gray-400">-</span>}
+                      </div>
+                    </div>
+                    <div>
+                      <p className="text-xs font-semibold text-gray-400 mb-1.5">Watch List</p>
+                      <div className="flex flex-wrap gap-1">
+                        {row.result.watch_list.slice(0, 4).map((w, i) => (
+                          <span key={i} className={`text-xs px-2 py-0.5 rounded-full font-mono ${
+                            w.priority === 'high' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'
+                          }`}>{w.target}</span>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  {row.result.contrarian_view && (
+                    <div className="bg-violet-50 border border-violet-100 rounded-lg p-3">
+                      <p className="text-xs text-gray-400 font-semibold mb-1">역발상</p>
+                      <p className="text-xs text-violet-800">{row.result.contrarian_view}</p>
+                    </div>
+                  )}
+
+                  {/* Review results */}
+                  {row.reviews.length > 0 && (
+                    <div className="space-y-2">
+                      <p className="text-xs font-semibold text-gray-400">리뷰 결과</p>
+                      {row.reviews.map(r => (
+                        <div key={r.id} className="bg-white border rounded-lg p-3 space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-semibold text-gray-700">
+                              {HORIZON_LABELS[r.horizon as ReviewHorizon]} 리뷰
+                              <span className="ml-2 text-gray-400 font-normal">{r.reviewed_at.slice(0, 10)}</span>
+                            </span>
+                            <div className="flex items-center gap-3 text-xs">
+                              <span className="text-gray-400">종합 <AccuracyBadge score={r.scores.overall_accuracy} /></span>
+                              <span className="text-gray-400">장세 <AccuracyBadge score={r.scores.regime_score} /></span>
+                              <span className="text-gray-400">섹터 <AccuracyBadge score={r.scores.leading_sector_score} /></span>
+                              <span className="text-gray-400">워치 <AccuracyBadge score={r.scores.watchlist_score} /></span>
+                            </div>
+                          </div>
+                          {r.scores.what_we_got_right.length > 0 && (
+                            <div>
+                              <p className="text-xs text-emerald-600 font-medium mb-0.5">맞은 것</p>
+                              <ul className="text-xs text-gray-600 space-y-0.5">
+                                {r.scores.what_we_got_right.map((s, i) => <li key={i}>· {s}</li>)}
+                              </ul>
+                            </div>
+                          )}
+                          {r.scores.what_we_got_wrong.length > 0 && (
+                            <div>
+                              <p className="text-xs text-red-500 font-medium mb-0.5">틀린 것</p>
+                              <ul className="text-xs text-gray-600 space-y-0.5">
+                                {r.scores.what_we_got_wrong.map((s, i) => <li key={i}>· {s}</li>)}
+                              </ul>
+                            </div>
+                          )}
+                          {r.scores.learning && (
+                            <div className="bg-gray-50 rounded p-2">
+                              <p className="text-xs text-gray-500 font-medium mb-0.5">교훈</p>
+                              <p className="text-xs text-gray-700">{r.scores.learning}</p>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 // ── Root Dashboard ─────────────────────────────────────────────────────────────
 
 export default function Dashboard() {
-  const [tab, setTab] = useState<'news' | 'briefing' | 'run' | 'score' | 'matrix'>('news')
+  const [tab, setTab] = useState<'news' | 'briefing' | 'run' | 'score' | 'matrix' | 'wb'>('news')
   const [newsItems, setNewsItems] = useState<NewsItem[]>([])
 
   const tabs = [
     { key: 'news' as const, label: '뉴스 수집' },
     { key: 'briefing' as const, label: '알파리서치 브리핑' },
+    { key: 'wb' as const, label: 'WB 전략' },
     { key: 'run' as const, label: '실험 실행 (개별)' },
     { key: 'score' as const, label: '채점' },
     { key: 'matrix' as const, label: '비용/품질' },
@@ -1257,6 +1514,7 @@ export default function Dashboard() {
       <main className="px-6 py-5 max-w-4xl">
         {tab === 'news' && <NewsPanel onNewsLoaded={handleNewsLoaded} />}
         {tab === 'briefing' && <BriefingPanel newsItems={newsItems} />}
+        {tab === 'wb' && <WbStrategyPanel />}
         {tab === 'run' && <RunPanel newsItems={newsItems} />}
         {tab === 'score' && <ScoringPanel />}
         {tab === 'matrix' && <MatrixPanel />}

@@ -164,3 +164,102 @@ export async function getBriefingDates(): Promise<string[]> {
     return []
   }
 }
+
+// ── Macro Critiques ───────────────────────────────────────────────────────────
+
+import type { MacroCritiqueResult, CritiqueReviewResult, ReviewHorizon } from './models'
+
+async function ensureMacroTables() {
+  const sql = getSql()
+  await sql`
+    CREATE TABLE IF NOT EXISTS macro_critiques (
+      id SERIAL PRIMARY KEY,
+      week_start TEXT NOT NULL,
+      result JSONB NOT NULL,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `
+  await sql`
+    CREATE TABLE IF NOT EXISTS critique_reviews (
+      id SERIAL PRIMARY KEY,
+      critique_id INTEGER REFERENCES macro_critiques(id) ON DELETE CASCADE,
+      horizon TEXT NOT NULL,
+      review_date TEXT NOT NULL,
+      actual_snapshot JSONB DEFAULT '{}',
+      scores JSONB NOT NULL,
+      reviewed_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `
+}
+
+export async function saveMacroCritique(result: MacroCritiqueResult): Promise<number> {
+  const sql = getSql()
+  await ensureMacroTables()
+  const rows = await sql`
+    INSERT INTO macro_critiques (week_start, result)
+    VALUES (${result.week_start}, ${JSON.stringify(result)})
+    RETURNING id
+  `
+  return (rows[0] as { id: number }).id
+}
+
+export async function getMacroCritiques(limit = 20): Promise<Array<{
+  id: number; week_start: string; result: MacroCritiqueResult; created_at: string
+  reviews: Array<{ id: number; horizon: string; review_date: string; scores: CritiqueReviewResult; reviewed_at: string }>
+}>> {
+  try {
+    const sql = getSql()
+    await ensureMacroTables()
+    const rows = await sql`
+      SELECT
+        c.id, c.week_start, c.result, c.created_at::text,
+        COALESCE(
+          JSON_AGG(
+            JSON_BUILD_OBJECT(
+              'id', r.id,
+              'horizon', r.horizon,
+              'review_date', r.review_date,
+              'scores', r.scores,
+              'reviewed_at', r.reviewed_at::text
+            ) ORDER BY r.reviewed_at
+          ) FILTER (WHERE r.id IS NOT NULL),
+          '[]'
+        ) AS reviews
+      FROM macro_critiques c
+      LEFT JOIN critique_reviews r ON r.critique_id = c.id
+      GROUP BY c.id
+      ORDER BY c.created_at DESC
+      LIMIT ${limit}
+    `
+    return rows as ReturnType<typeof getMacroCritiques> extends Promise<infer T> ? T : never
+  } catch {
+    return []
+  }
+}
+
+export async function getCritiqueById(id: number): Promise<{ week_start: string; result: MacroCritiqueResult } | null> {
+  try {
+    const sql = getSql()
+    const rows = await sql`SELECT week_start, result FROM macro_critiques WHERE id = ${id}`
+    if (!rows.length) return null
+    return rows[0] as { week_start: string; result: MacroCritiqueResult }
+  } catch {
+    return null
+  }
+}
+
+export async function saveReview(
+  critiqueId: number,
+  horizon: ReviewHorizon,
+  reviewDate: string,
+  actualSnapshot: Record<string, unknown>,
+  scores: CritiqueReviewResult,
+): Promise<void> {
+  const sql = getSql()
+  await ensureMacroTables()
+  await sql`
+    INSERT INTO critique_reviews (critique_id, horizon, review_date, actual_snapshot, scores)
+    VALUES (${critiqueId}, ${horizon}, ${reviewDate}, ${JSON.stringify(actualSnapshot)}, ${JSON.stringify(scores)})
+    ON CONFLICT DO NOTHING
+  `
+}

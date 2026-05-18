@@ -17,9 +17,9 @@ export const PROVIDER_CONFIG: Record<ProviderName, ProviderConfig> = {
   openai: {
     enabled: true,
     tiers: {
-      low:  { model: 'gpt-5-nano', priceIn: 0.15,  priceOut: 0.60  },
-      mid:  { model: 'gpt-5-nano', priceIn: 0.15,  priceOut: 0.60  },
-      high: { model: 'gpt-5-nano', priceIn: 2.50,  priceOut: 10.00 },
+      low:  { model: 'gpt-5-nano', priceIn: 0.15, priceOut: 0.60  }, // tagger — fast JSON extraction
+      mid:  { model: 'gpt-5-nano', priceIn: 0.15, priceOut: 0.60  }, // sentiment — structured scoring
+      high: { model: 'gpt-5-nano', priceIn: 0.15, priceOut: 0.60  }, // WB critique / report
     },
     notes: 'Strict JSON output 강함',
   },

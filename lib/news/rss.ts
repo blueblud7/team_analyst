@@ -60,6 +60,22 @@ export async function fetchCnnEconomyRss(): Promise<RssItem[]> {
   return fetchRss('https://rss.cnn.com/rss/money_news_economy.rss', 'CNN_Economy', 8)
 }
 
+// Macro-focused RSS bundle: Fed, rates, geopolitics, global economy
+const MACRO_RSS_SOURCES = [
+  { url: 'https://feeds.reuters.com/reuters/businessNews',    name: 'Reuters_Business',  limit: 8 },
+  { url: 'https://feeds.reuters.com/reuters/UKdomesticNews',  name: 'Reuters_Global',    limit: 5 },
+  { url: 'https://rss.cnn.com/rss/money_news_international.rss', name: 'CNN_World',      limit: 6 },
+] as const
+
+export async function fetchMacroRssItems(): Promise<RssItem[]> {
+  const results = await Promise.allSettled(
+    MACRO_RSS_SOURCES.map(s => fetchRss(s.url, s.name, s.limit))
+  )
+  return results
+    .filter((r): r is PromiseFulfilledResult<RssItem[]> => r.status === 'fulfilled')
+    .flatMap(r => r.value)
+}
+
 // Naver Finance news RSS (semiconductor/tech focus)
 export async function fetchNaverFinanceRss(): Promise<RssItem[]> {
   const urls = [

@@ -1,4 +1,5 @@
-import type { TaggedEvent, WeeklyMetrics } from './models'
+import type { TaggedEvent, WeeklyMetrics, SectorMetrics } from './models'
+import { normalizeSectors, type CanonicalSector } from './sectors'
 
 function computeWsi(events: TaggedEvent[]): number {
   const valid = events.filter(e => e.sentiment_score !== null && e.conviction !== null)
@@ -26,6 +27,71 @@ function checkAlerts(velocity: number, divergence: number): string[] {
     alerts.push(`DIVERGENCE_ALERT: ${divergence.toFixed(3)} — 의견 양극화 (변곡점 가능성)`)
   }
   return alerts
+}
+
+// Groups tagged events by canonical sector and computes per-sector metrics.
+// eventsNow = this week, eventsPrev = previous week (for velocity).
+export function buildAllSectorMetrics(
+  eventsNow: TaggedEvent[],
+  eventsPrev: TaggedEvent[],
+): Record<CanonicalSector, SectorMetrics> {
+  const groupNow = groupBySector(eventsNow)
+  const groupPrev = groupBySector(eventsPrev)
+
+  const result = {} as Record<CanonicalSector, SectorMetrics>
+
+  const sectors = new Set<CanonicalSector>([
+    ...Object.keys(groupNow),
+    ...Object.keys(groupPrev),
+  ] as CanonicalSector[])
+
+  for (const sector of sectors) {
+    const now = groupNow[sector] ?? []
+    const prev = groupPrev[sector] ?? []
+
+    const wsiNow = computeWsi(now)
+    const wsiPrev = computeWsi(prev)
+    const velocity = wsiNow - wsiPrev
+    const divergence = computeDivergence(now)
+
+    const topTickers = getTopTickers(now)
+
+    result[sector] = {
+      wsi: Math.round(wsiNow * 10000) / 10000,
+      velocity: Math.round(velocity * 10000) / 10000,
+      divergence: Math.round(divergence * 10000) / 10000,
+      event_count: now.length,
+      top_tickers: topTickers,
+      alerts: checkAlerts(velocity, divergence),
+    }
+  }
+
+  return result
+}
+
+function groupBySector(events: TaggedEvent[]): Partial<Record<CanonicalSector, TaggedEvent[]>> {
+  const groups: Partial<Record<CanonicalSector, TaggedEvent[]>> = {}
+  for (const event of events) {
+    const canonical = normalizeSectors(event.sectors)
+    for (const sector of canonical) {
+      if (!groups[sector]) groups[sector] = []
+      groups[sector]!.push(event)
+    }
+  }
+  return groups
+}
+
+function getTopTickers(events: TaggedEvent[]): string[] {
+  const counts: Record<string, number> = {}
+  for (const e of events) {
+    for (const t of e.tickers) {
+      counts[t] = (counts[t] ?? 0) + 1
+    }
+  }
+  return Object.entries(counts)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3)
+    .map(([t]) => t)
 }
 
 export function buildWeeklyMetrics(
