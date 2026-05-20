@@ -21,6 +21,22 @@ interface MarketIndicator {
   decimals: number
 }
 
+function TickerItem({ ind }: { ind: MarketIndicator }) {
+  const up = ind.changePct >= 0
+  return (
+    <div className="flex items-baseline gap-1.5 shrink-0 px-4">
+      <span className="text-xs text-gray-500">{ind.name}</span>
+      <span className="text-sm font-semibold tabular-nums text-white">
+        {ind.price.toFixed(ind.decimals)}
+      </span>
+      <span className={`text-xs font-medium tabular-nums ${up ? 'text-red-400' : 'text-blue-400'}`}>
+        {up ? '▲' : '▼'}{Math.abs(ind.changePct).toFixed(2)}%
+      </span>
+      <span className="text-gray-700 text-xs ml-2">|</span>
+    </div>
+  )
+}
+
 function MarketStrip() {
   const [indicators, setIndicators] = useState<MarketIndicator[]>([])
   const [updatedAt, setUpdatedAt] = useState<string | null>(null)
@@ -36,40 +52,28 @@ function MarketStrip() {
         .catch(() => {})
     }
     load()
-    const id = setInterval(load, 60_000) // refresh every 60s
+    const id = setInterval(load, 60_000)
     return () => clearInterval(id)
   }, [])
 
   if (!indicators.length) return null
 
+  // Duplicate for seamless loop
+  const both = [...indicators, ...indicators]
+
   return (
-    <div className="bg-gray-900 text-white">
-      <div className="max-w-3xl mx-auto px-6 py-2">
-        <div className="flex items-center gap-1 overflow-x-auto no-scrollbar">
-          <span className="text-xs text-gray-500 shrink-0 mr-2">실시간</span>
-          {indicators.map((ind, i) => {
-            const up = ind.changePct >= 0
-            return (
-              <div key={ind.symbol} className="flex items-center gap-3 shrink-0">
-                {i > 0 && <span className="text-gray-700 text-xs">|</span>}
-                <div className="flex items-baseline gap-1.5">
-                  <span className="text-xs text-gray-400">{ind.name}</span>
-                  <span className="text-sm font-semibold tabular-nums">
-                    {ind.price.toFixed(ind.decimals)}
-                  </span>
-                  <span className={`text-xs font-medium tabular-nums ${up ? 'text-red-400' : 'text-blue-400'}`}>
-                    {up ? '▲' : '▼'}{Math.abs(ind.changePct).toFixed(2)}%
-                  </span>
-                </div>
-              </div>
-            )
-          })}
-          {updatedAt && (
-            <span className="ml-auto text-xs text-gray-600 shrink-0 pl-4">
-              {new Date(updatedAt).toLocaleTimeString('ko-KR', { timeZone: 'Asia/Seoul', hour: '2-digit', minute: '2-digit' })}
-            </span>
-          )}
+    <div className="bg-gray-900 text-white border-b border-gray-800 overflow-hidden relative">
+      {/* Time badge — fixed left */}
+      {updatedAt && (
+        <div className="absolute left-0 top-0 bottom-0 z-10 flex items-center pl-3 pr-4 bg-gradient-to-r from-gray-900 via-gray-900 to-transparent pointer-events-none">
+          <span className="text-xs text-gray-500 tabular-nums">
+            {new Date(updatedAt).toLocaleTimeString('ko-KR', { timeZone: 'Asia/Seoul', hour: '2-digit', minute: '2-digit' })}
+          </span>
         </div>
+      )}
+      {/* Scrolling ticker */}
+      <div className="flex animate-ticker py-2 pl-16">
+        {both.map((ind, i) => <TickerItem key={`${ind.symbol}-${i}`} ind={ind} />)}
       </div>
     </div>
   )
@@ -124,24 +128,112 @@ function CopyButton({ text }: { text: string }) {
   )
 }
 
-function BriefingContent({ content }: { content: string }) {
+// Section header color scheme
+const SECTION_STYLES: Array<{ match: RegExp; bg: string; text: string; bar: string; icon: string }> = [
+  { match: /핵심\s*메시지|핵심\s*신호|요약/,   bg: 'bg-blue-50',   text: 'text-blue-800',   bar: 'bg-blue-500',   icon: '◈' },
+  { match: /섹터|동향|종목/,                    bg: 'bg-teal-50',   text: 'text-teal-800',   bar: 'bg-teal-500',   icon: '◉' },
+  { match: /신호|주목|이슈|변곡/,               bg: 'bg-amber-50',  text: 'text-amber-800',  bar: 'bg-amber-500',  icon: '◆' },
+  { match: /체크|내일|점검|포인트|어젠다/,      bg: 'bg-emerald-50',text: 'text-emerald-800',bar: 'bg-emerald-500',icon: '◇' },
+  { match: /지표|시장/,                         bg: 'bg-gray-100',  text: 'text-gray-700',   bar: 'bg-gray-400',   icon: '◎' },
+]
+
+function getSectionStyle(title: string) {
+  for (const s of SECTION_STYLES) {
+    if (s.match.test(title)) return s
+  }
+  return { bg: 'bg-gray-50', text: 'text-gray-700', bar: 'bg-gray-300', icon: '○' }
+}
+
+// Highlight numbers and percentages inline
+function InlineText({ text }: { text: string }) {
+  // Split on **bold**, numbers with %, ▲▼
+  const parts = text.split(/(\*\*[^*]+\*\*|[+-]?\d+\.?\d*%|▲\d+\.?\d*%|▼\d+\.?\d*%)/g)
   return (
-    <div>
+    <>
+      {parts.map((p, i) => {
+        if (p.startsWith('**') && p.endsWith('**'))
+          return <strong key={i} className="font-semibold text-gray-900">{p.slice(2, -2)}</strong>
+        if (/▲/.test(p) || (/^[+]?\d/.test(p) && p.endsWith('%') && !p.startsWith('-')))
+          return <span key={i} className="font-semibold text-red-500 tabular-nums">{p}</span>
+        if (/▼/.test(p) || (/-\d/.test(p) && p.endsWith('%')))
+          return <span key={i} className="font-semibold text-blue-500 tabular-nums">{p}</span>
+        if (/\d+\.?\d*%$/.test(p))
+          return <span key={i} className="font-medium text-gray-600 tabular-nums">{p}</span>
+        return <span key={i}>{p}</span>
+      })}
+    </>
+  )
+}
+
+function BriefingContent({ content }: { content: string }) {
+  let currentSection = ''
+
+  return (
+    <div className="space-y-0.5">
       {content.split('\n').map((line, i) => {
-        if (line.startsWith('# '))   return <h1 key={i} className="text-xl font-bold text-gray-900 mt-4 mb-2">{line.slice(2)}</h1>
-        if (line.startsWith('## '))  return <h2 key={i} className="text-base font-bold text-gray-800 mt-4 mb-1 border-b border-gray-100 pb-1">{line.slice(3)}</h2>
-        if (line.startsWith('### ')) return <h3 key={i} className="text-sm font-semibold text-gray-700 mt-3 mb-1">{line.slice(4)}</h3>
-        if (line === '---') return <hr key={i} className="my-3 border-gray-100" />
-        if (line.startsWith('⚠️')) return <p key={i} className="text-xs text-gray-400 mt-2">{line}</p>
+        if (line.startsWith('# ')) {
+          return (
+            <h1 key={i} className="text-lg font-bold text-gray-900 mt-5 mb-3 pb-2 border-b-2 border-gray-200">
+              {line.slice(2)}
+            </h1>
+          )
+        }
+
+        if (line.startsWith('## ')) {
+          const title = line.slice(3)
+          currentSection = title
+          const s = getSectionStyle(title)
+          return (
+            <div key={i} className={`flex items-center gap-2 mt-5 mb-2 px-3 py-1.5 rounded-lg ${s.bg}`}>
+              <span className={`text-xs font-bold ${s.text} opacity-60`}>{s.icon}</span>
+              <h2 className={`text-sm font-bold ${s.text}`}>{title}</h2>
+            </div>
+          )
+        }
+
+        if (line.startsWith('### ')) {
+          return (
+            <h3 key={i} className="text-sm font-semibold text-gray-700 mt-3 mb-1 pl-1">
+              {line.slice(4)}
+            </h3>
+          )
+        }
+
+        if (line === '---') return <hr key={i} className="my-4 border-gray-100" />
+
+        if (line.startsWith('⚠️')) {
+          return <p key={i} className="text-xs text-gray-400 mt-3 pt-2 border-t border-gray-100">{line}</p>
+        }
+
         if (line.trim() === '') return <div key={i} className="h-1" />
-        const parts = line.split(/(\*\*[^*]+\*\*)/)
+
+        // Bullet list item
+        if (line.match(/^[-•]\s/)) {
+          const s = getSectionStyle(currentSection)
+          return (
+            <div key={i} className="flex items-start gap-2 pl-2 py-0.5">
+              <span className={`mt-1.5 w-1.5 h-1.5 rounded-full shrink-0 ${s.bar}`} />
+              <p className="text-sm text-gray-700 leading-relaxed">
+                <InlineText text={line.slice(2)} />
+              </p>
+            </div>
+          )
+        }
+
+        // Numbered list
+        if (line.match(/^\d+\.\s/)) {
+          const [num, ...rest] = line.split(/\.\s(.*)/)
+          return (
+            <div key={i} className="flex items-start gap-2 pl-2 py-0.5">
+              <span className="shrink-0 w-5 h-5 rounded-full bg-gray-200 text-gray-500 text-xs flex items-center justify-center font-semibold mt-0.5">{num}</span>
+              <p className="text-sm text-gray-700 leading-relaxed"><InlineText text={rest[0] ?? ''} /></p>
+            </div>
+          )
+        }
+
         return (
-          <p key={i} className="text-sm text-gray-700 leading-relaxed">
-            {parts.map((p, j) =>
-              p.startsWith('**') && p.endsWith('**')
-                ? <strong key={j}>{p.slice(2, -2)}</strong>
-                : p
-            )}
+          <p key={i} className="text-sm text-gray-700 leading-relaxed pl-1">
+            <InlineText text={line} />
           </p>
         )
       })}
